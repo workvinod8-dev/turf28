@@ -682,7 +682,7 @@ function App() {
     const currentHour = new Date().getHours(); // e.g. 11 if 11:01 AM
     return ALL_SLOTS.filter(s => {
       if (bookedFor(sport, date).includes(s)) return false; // already booked
-      if (date === getToday() && getSlotHour(s) <= currentHour) return false; // past slot
+      if (date === getToday() && getSlotHour(s) < currentHour) return false; // past slot
       return true;
     });
   };
@@ -805,7 +805,7 @@ function App() {
       if (idx >= ALL_SLOTS.length) return false;
       const s = ALL_SLOTS[idx];
       if (booked.includes(s)) return false;
-      if (date === getToday() && getSlotHour(s) <= currentHour) return false;
+      if (date === getToday() && getSlotHour(s) < currentHour) return false;
     }
     return true;
   };
