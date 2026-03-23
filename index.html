@@ -182,8 +182,13 @@ function saveBookings(b) {
 }
 
 function saveHistory(h) {
-  try { db.ref("history").set(h); } catch(e) { console.warn("FB save error:", e); }
+  // Only save the last entry (newest) using push — avoids overwriting all data
+  // Full array is managed via Firebase listener
   try { localStorage.setItem("turf28_history", JSON.stringify(h)); } catch(e) {}
+}
+
+function pushHistoryEntry(entry) {
+  try { db.ref("history").push(entry); } catch(e) { console.warn("FB push error:", e); }
 }
 
 function loadBookings() {
@@ -1428,10 +1433,12 @@ function App() {
                       name: confirmed.name, phone: confirmed.phone,
                       players: confirmed.players || "-",
                       amount: getSlotPrice(confirmed.slot, confirmed.date),
+                      hours: confirmed.hours || 1,
+                      selectedSlots: confirmed.selectedSlots || [confirmed.slot],
                       bookedAt: new Date().toLocaleString("en-IN"),
                       status: "Pending Confirmation"
                     };
-                    setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
+                    pushHistoryEntry(entry);
                     setStep(5);
                   }}
                   className="btn bwa" style={{ width:"100%",fontSize:17,padding:"15px",justifyContent:"center",border:"none",cursor:"pointer" }}>
