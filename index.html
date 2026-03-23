@@ -177,7 +177,11 @@ const TODAY = getToday(); // used for initial state only
 const BASE_BOOKINGS = {};
 
 function saveBookings(b) {
-  try { db.ref("bookings").set(b); } catch(e) { console.warn("FB save error:", e); }
+  try {
+    db.ref("bookings").set(b, err => {
+      if (err) console.warn("FB write failed:", err);
+    });
+  } catch(e) { console.warn("FB save error:", e); }
   try { localStorage.setItem("turf28_bookings", JSON.stringify(b)); } catch(e) {}
 }
 
@@ -1403,16 +1407,23 @@ function App() {
                   onClick={() => {
                     const { sport, date, slot, selectedSlots, hours } = confirmed;
                     const slotsToBlock = selectedSlots || [slot];
-                    setBookings(prev => {
-                      const u = {...prev};
-                      if (!u[date]) u[date] = { cricket:[],football:[] };
-                      const existing = u[date][sport] || [];
-                      // Add all hours slots
+
+                    // 1. Read current bookings from Firebase directly, then update
+                    db.ref("bookings").once("value", snap => {
+                      const current = snap.val() || {};
+                      if (!current[date]) current[date] = { cricket:[], football:[] };
+                      const existing = current[date][sport] || [];
                       const newSlots = [...new Set([...existing, ...slotsToBlock])];
-                      u[date] = { ...u[date], [sport]: newSlots };
-                         saveBookings(u);
-                      return u;
+                      current[date] = { ...current[date], [sport]: newSlots };
+                      // Save updated bookings to Firebase
+                      db.ref("bookings").set(current, err => {
+                        if (err) console.warn("FB booking write failed:", err);
+                      });
+                      // Update local state + localStorage
+                      setBookings(current);
+                      try { localStorage.setItem("turf28_bookings", JSON.stringify(current)); } catch(e) {}
                     });
+
                     const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours||1);
                     const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
                     const msg =
@@ -1427,7 +1438,8 @@ function App() {
                       (confirmed.players ? "👥 Players: " + confirmed.players + "\n" : "") +
                       "\n📸 Payment screenshot attached. Please confirm my slot.";
                     window.open("https://wa.me/91"+PHONE+"?text="+encodeURIComponent(msg), "_blank");
-                    // Save booking to history
+
+                    // 2. Save booking entry to Firebase history
                     const entry = {
                       sport: confirmed.sport, date: confirmed.date, slot: confirmed.slot,
                       name: confirmed.name, phone: confirmed.phone,
