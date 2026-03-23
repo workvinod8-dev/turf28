@@ -709,19 +709,29 @@ function App() {
     const confirmedData = { ...booking, ...form, selectedSlots: getSelectedSlots() };
     setConfirmed(confirmedData);
 
-    // ✅ Block slot IMMEDIATELY in Firebase when user confirms — don't wait for WhatsApp
-    const slotsToBlock = confirmedData.selectedSlots || [confirmedData.slot];
+    const slotsToBlock = confirmedData.selectedSlots?.length > 0
+      ? confirmedData.selectedSlots
+      : [confirmedData.slot];
     const { sport, date } = confirmedData;
+
+    // ✅ 1. Update LOCAL state immediately so slot disappears from UI right away
+    setBookings(prev => {
+      const updated = JSON.parse(JSON.stringify(prev || {}));
+      if (!updated[date]) updated[date] = { cricket: [], football: [] };
+      if (!updated[date][sport]) updated[date][sport] = [];
+      updated[date][sport] = [...new Set([...updated[date][sport], ...slotsToBlock])];
+      return updated;
+    });
+
+    // ✅ 2. Also save to Firebase (read-then-write to avoid race conditions)
     db.ref("bookings").once("value", snap => {
       const current = snap.val() || {};
-      if (!current[date]) current[date] = { cricket:[], football:[] };
-      const existing = current[date][sport] || [];
-      const newSlots = [...new Set([...existing, ...slotsToBlock])];
-      current[date] = { ...current[date], [sport]: newSlots };
+      if (!current[date]) current[date] = { cricket: [], football: [] };
+      if (!current[date][sport]) current[date][sport] = [];
+      current[date][sport] = [...new Set([...current[date][sport], ...slotsToBlock])];
       db.ref("bookings").set(current, err => {
         if (err) console.warn("FB slot block failed:", err);
       });
-      setBookings(current);
     });
 
     setStep(4);
