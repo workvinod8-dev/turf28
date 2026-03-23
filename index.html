@@ -268,39 +268,234 @@ function PricingCard({ sport, icon, isGreen, onBook }) {
 }
 
 function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPrice, setAdminOpen, setAdminAuth, setAdminPin, TODAY}) {
-  const [adminTab, setAdminTab] = React.useState("slots");
+  const [adminTab, setAdminTab] = React.useState("bookings");
   const [adminDate, setAdminDate] = React.useState(getToday());
   const [histFilter, setHistFilter] = React.useState("day");
+  const [sportFilter, setSportFilter] = React.useState("all");
+  const [expandedCard, setExpandedCard] = React.useState(null);
+  const [statusMap, setStatusMap] = React.useState({});
+  const [searchQuery, setSearchQuery] = React.useState("");
 
   const filterHistory = () => {
     const now = new Date();
     return history.filter(b => {
       const d = new Date(b.date);
-      if (histFilter==="day") return b.date===getToday();
-      if (histFilter==="week") { const wa=new Date(now); wa.setDate(now.getDate()-7); return d>=wa; }
-      if (histFilter==="month") return d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
-      return true;
+      let passTime = true;
+      if (histFilter==="day") passTime = b.date===getToday();
+      else if (histFilter==="week") { const wa=new Date(now); wa.setDate(now.getDate()-7); passTime = d>=wa; }
+      else if (histFilter==="month") passTime = d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      let passSport = sportFilter==="all" || b.sport===sportFilter;
+      let passSearch = !searchQuery || b.name?.toLowerCase().includes(searchQuery.toLowerCase()) || b.phone?.includes(searchQuery);
+      return passTime && passSport && passSearch;
     });
   };
+
   const filteredHistory = filterHistory();
-  const totalRevenue = filteredHistory.reduce((sum,b)=>sum+b.amount,0);
+  const totalRevenue = filteredHistory.reduce((sum,b)=>sum+(Number(b.amount)||0),0);
+  const cricketCount = filteredHistory.filter(b=>b.sport==="cricket").length;
+  const footballCount = filteredHistory.filter(b=>b.sport==="football").length;
+  const pendingCount = filteredHistory.filter(b=>(statusMap[b.bookedAt]||b.status)==="Pending Confirmation").length;
+
+  const getStatus = (b) => statusMap[b.bookedAt] || b.status || "Pending Confirmation";
+  const statusColors = {
+    "Pending Confirmation": { bg:"#FEF9C3", border:"#FDE047", text:"#854D0E" },
+    "Confirmed": { bg:"#DCFCE7", border:"#86EFAC", text:"#15803D" },
+    "Cancelled": { bg:"#FEE2E2", border:"#FECACA", text:"#DC2626" },
+    "Completed": { bg:"#DBEAFE", border:"#93C5FD", text:"#1D4ED8" },
+  };
+
+  const getDuration = (b) => {
+    if (b.hours) return b.hours + " hr" + (b.hours > 1 ? "s" : "");
+    if (b.selectedSlots && b.selectedSlots.length) return b.selectedSlots.length + " hr" + (b.selectedSlots.length > 1 ? "s" : "");
+    return "1 hr";
+  };
+
+  const getTotalAmount = (b) => {
+    if (b.hours && b.slot && b.date) return getSlotPrice(b.slot, b.date) * b.hours;
+    return b.amount || 0;
+  };
+
+  const getEndTime = (b) => {
+    if (b.selectedSlots && b.selectedSlots.length > 0) {
+      return b.selectedSlots[b.selectedSlots.length-1]?.split("–")[1]?.trim() || "";
+    }
+    return b.slot?.split("–")[1]?.trim() || "";
+  };
+
+  const getStartTime = (b) => b.slot?.split("–")[0]?.trim() || b.slot || "";
 
   return (
     <div>
+      {/* Header */}
       <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16 }}>
-        <div className="bb" style={{ fontSize:22,color:"#15803D" }}>ADMIN PANEL</div>
-        <button onClick={()=>{setAdminOpen(false);setAdminAuth(false);setAdminPin("");}} style={{ background:"none",border:"none",cursor:"pointer",color:"#6B7280",fontSize:22 }}>✕</button>
+        <div style={{ display:"flex",alignItems:"center",gap:8 }}>
+          <div style={{ width:32,height:32,background:"#15803D",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16 }}>⚙️</div>
+          <div className="bb" style={{ fontSize:22,color:"#15803D" }}>ADMIN PANEL</div>
+        </div>
+        <button onClick={()=>{setAdminOpen(false);setAdminAuth(false);setAdminPin("");}}
+          style={{ background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",width:32,height:32,borderRadius:8,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center" }}>✕</button>
       </div>
-      <div style={{ display:"flex",gap:8,marginBottom:20 }}>
-        {[["slots","🔒 Slots"],["history","📊 Bookings"]].map(([t,l])=>(
+
+      {/* Tabs */}
+      <div style={{ display:"flex",gap:6,marginBottom:18 }}>
+        {[["bookings","📋 Bookings"],["slots","🔒 Slots"],["stats","📊 Stats"]].map(([t,l])=>(
           <button key={t} onClick={()=>setAdminTab(t)}
-            style={{ flex:1,padding:"9px",borderRadius:8,border:"1.5px solid",fontFamily:"'Bebas Neue',cursive",fontSize:15,letterSpacing:1,cursor:"pointer",
-              borderColor:adminTab===t?"#15803D":"#BBF7D0",background:adminTab===t?"rgba(21,128,61,0.1)":"#F9FAFB",color:adminTab===t?"#15803D":"#6B7280" }}>
+            style={{ flex:1,padding:"9px 4px",borderRadius:8,border:"1.5px solid",fontFamily:"'Bebas Neue',cursive",fontSize:14,letterSpacing:1,cursor:"pointer",
+              borderColor:adminTab===t?"#15803D":"#BBF7D0",background:adminTab===t?"rgba(21,128,61,0.12)":"#F9FAFB",color:adminTab===t?"#15803D":"#6B7280" }}>
             {l}
           </button>
         ))}
       </div>
 
+      {/* ── BOOKINGS TAB ── */}
+      {adminTab==="bookings" && (
+        <div>
+          {/* Search */}
+          <div style={{ marginBottom:10 }}>
+            <input className="inp" placeholder="🔍 Search by name or phone..." value={searchQuery}
+              onChange={e=>setSearchQuery(e.target.value)} style={{ fontSize:13 }}/>
+          </div>
+
+          {/* Time Filter */}
+          <div style={{ display:"flex",gap:5,marginBottom:8 }}>
+            {[["day","Today"],["week","Week"],["month","Month"],["all","All"]].map(([f,l])=>(
+              <button key={f} onClick={()=>setHistFilter(f)}
+                style={{ flex:1,padding:"7px 2px",borderRadius:7,border:"1.5px solid",fontSize:11,fontWeight:700,cursor:"pointer",
+                  borderColor:histFilter===f?"#15803D":"#BBF7D0",background:histFilter===f?"rgba(21,128,61,0.08)":"#F9FAFB",color:histFilter===f?"#15803D":"#6B7280" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Sport Filter */}
+          <div style={{ display:"flex",gap:5,marginBottom:14 }}>
+            {[["all","All Sports"],["cricket","🏏 Cricket"],["football","⚽ Football"]].map(([f,l])=>(
+              <button key={f} onClick={()=>setSportFilter(f)}
+                style={{ flex:1,padding:"6px 2px",borderRadius:7,border:"1.5px solid",fontSize:11,fontWeight:700,cursor:"pointer",
+                  borderColor:sportFilter===f?"#15803D":"#BBF7D0",background:sportFilter===f?"rgba(21,128,61,0.08)":"#F9FAFB",color:sportFilter===f?"#15803D":"#6B7280" }}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* Summary Row */}
+          <div style={{ display:"flex",gap:8,marginBottom:14 }}>
+            {[
+              { label:"Total", val:filteredHistory.length, col:"#15803D", bg:"rgba(21,128,61,0.06)", bdr:"rgba(21,128,61,0.2)" },
+              { label:"Revenue", val:"₹"+getTotalRevenueDisplay(filteredHistory,getSlotPrice), col:"#D97706", bg:"rgba(217,119,6,0.06)", bdr:"rgba(217,119,6,0.2)" },
+              { label:"Pending", val:pendingCount, col:"#854D0E", bg:"#FEF9C3", bdr:"#FDE047" },
+            ].map(s=>(
+              <div key={s.label} style={{ flex:1,background:s.bg,border:"1px solid "+s.bdr,borderRadius:10,padding:"10px 8px",textAlign:"center" }}>
+                <div className="bb" style={{ fontSize:22,color:s.col,lineHeight:1 }}>{s.val}</div>
+                <div style={{ fontSize:9,color:"#9CA3AF",letterSpacing:1,textTransform:"uppercase",marginTop:2 }}>{s.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Booking Cards */}
+          {filteredHistory.length===0 ? (
+            <div style={{ textAlign:"center",padding:"32px 16px",color:"#6B7280",fontSize:13,background:"#F9FAFB",borderRadius:12,border:"1px dashed #BBF7D0" }}>
+              <div style={{ fontSize:32,marginBottom:8 }}>📭</div>
+              No bookings found
+            </div>
+          ) : (
+            <div style={{ display:"flex",flexDirection:"column",gap:10,maxHeight:420,overflowY:"auto",paddingRight:2 }}>
+              {[...filteredHistory].reverse().map((b,i)=>{
+                const isOpen = expandedCard===i;
+                const status = getStatus(b);
+                const sc = statusColors[status] || statusColors["Pending Confirmation"];
+                const totalAmt = getTotalAmount(b);
+                return (
+                  <div key={i} style={{ background:"#fff",border:"1.5px solid #BBF7D0",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)" }}>
+                    {/* Card Header — always visible */}
+                    <div onClick={()=>setExpandedCard(isOpen?null:i)}
+                      style={{ padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
+                      <div style={{ flex:1 }}>
+                        <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap" }}>
+                          <span className="bb" style={{ fontSize:15,color:b.sport==="cricket"?"#15803D":"#D97706" }}>
+                            {b.sport==="cricket"?"🏏 Cricket":"⚽ Football"}
+                          </span>
+                          <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,background:sc.bg,border:"1px solid "+sc.bdr,color:sc.text,fontWeight:700 }}>
+                            {status}
+                          </span>
+                        </div>
+                        <div style={{ fontSize:13,fontWeight:700,color:"#111827" }}>👤 {b.name}</div>
+                        <div style={{ fontSize:11,color:"#6B7280",marginTop:2 }}>📞 {b.phone} &nbsp;·&nbsp; 📅 {getDayName(b.date)}</div>
+                      </div>
+                      <div style={{ textAlign:"right",flexShrink:0,marginLeft:8 }}>
+                        <div className="bb" style={{ fontSize:20,color:"#D97706" }}>₹{totalAmt}</div>
+                        <div style={{ fontSize:10,color:"#9CA3AF",marginTop:2 }}>{isOpen?"▲ less":"▼ more"}</div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Details */}
+                    {isOpen && (
+                      <div style={{ borderTop:"1px solid #E5E7EB",padding:"12px 14px",background:"#F9FAFB" }}>
+                        {/* All Fields Table */}
+                        <div style={{ marginBottom:12 }}>
+                          <div className="bb" style={{ fontSize:10,color:"#9CA3AF",letterSpacing:2,marginBottom:8 }}>BOOKING DETAILS</div>
+                          {[
+                            ["🏷️ Sport", b.sport==="cricket"?"🏏 Cricket Turf":"⚽ Football Turf"],
+                            ["📅 Date", getDayName(b.date)],
+                            ["⏰ Start Time", getStartTime(b)],
+                            ["⏱️ End Time", getEndTime(b)],
+                            ["⌛ Duration", getDuration(b)],
+                            ["💰 Amount", "₹"+totalAmt],
+                            ["👤 Name", b.name],
+                            ["📞 Phone", b.phone],
+                            ["👥 Players", b.players && b.players!=="-" ? b.players : "—"],
+                            ["🕐 Booked At", b.bookedAt || "—"],
+                            ["📌 Status", status],
+                          ].map(([k,v])=>(
+                            <div key={k} style={{ display:"flex",justifyContent:"space-between",padding:"5px 0",borderBottom:"1px solid #E5E7EB",gap:8 }}>
+                              <span style={{ fontSize:11,color:"#6B7280",fontWeight:600,flexShrink:0 }}>{k}</span>
+                              <span style={{ fontSize:11,color:"#111827",fontWeight:700,textAlign:"right" }}>{v}</span>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Status Update */}
+                        <div style={{ marginBottom:10 }}>
+                          <div className="bb" style={{ fontSize:10,color:"#9CA3AF",letterSpacing:2,marginBottom:6 }}>UPDATE STATUS</div>
+                          <div style={{ display:"flex",gap:5,flexWrap:"wrap" }}>
+                            {["Confirmed","Pending Confirmation","Completed","Cancelled"].map(s=>(
+                              <button key={s} onClick={()=>setStatusMap(prev=>({...prev,[b.bookedAt]:s}))}
+                                style={{ padding:"5px 10px",borderRadius:6,border:"1.5px solid",fontSize:10,fontWeight:700,cursor:"pointer",
+                                  borderColor:status===s?(statusColors[s]?.border||"#BBF7D0"):"#E5E7EB",
+                                  background:status===s?(statusColors[s]?.bg||"#F9FAFB"):"#fff",
+                                  color:status===s?(statusColors[s]?.text||"#111827"):"#9CA3AF" }}>
+                                {s==="Confirmed"?"✅ Confirmed":s==="Pending Confirmation"?"⏳ Pending":s==="Completed"?"🏁 Completed":"❌ Cancelled"}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div style={{ display:"flex",gap:6 }}>
+                          <a href={"https://wa.me/91"+b.phone} target="_blank" rel="noopener noreferrer"
+                            style={{ flex:1,padding:"8px",background:"#25D366",color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:4,textDecoration:"none",fontFamily:"'DM Sans',sans-serif" }}>
+                            <WA_ICON/> WhatsApp
+                          </a>
+                          <a href={"tel:+91"+b.phone}
+                            style={{ flex:1,padding:"8px",background:"#3b82f6",color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:4,textDecoration:"none",fontFamily:"'DM Sans',sans-serif" }}>
+                            <CALL_ICON/> Call
+                          </a>
+                          <button onClick={()=>{ if(window.confirm("Release this slot?")){releaseSlot(b.sport,b.date,b.slot);setExpandedCard(null);}}}
+                            style={{ flex:1,padding:"8px",background:"#FEF2F2",color:"#DC2626",border:"1px solid #FECACA",borderRadius:7,cursor:"pointer",fontSize:11,fontWeight:700 }}>
+                            🗑️ Release
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── SLOTS TAB ── */}
       {adminTab==="slots" && (
         <div>
           <div style={{ marginBottom:14 }}>
@@ -327,20 +522,28 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
                   <div style={{ fontSize:12,color:"#6B7280",padding:"10px",background:"#F9FAFB",borderRadius:8,textAlign:"center" }}>No blocked slots</div>
                 ):(
                   <div style={{ display:"flex",flexDirection:"column",gap:7 }}>
-                    {blocked.map(slot=>(
-                      <div key={slot} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:8,padding:"9px 12px" }}>
-                        <div>
-                          <div style={{ fontSize:13,color:"#111827",fontWeight:600 }}>{slot}</div>
-                          <div style={{ fontSize:10,color:"#D97706" }}>₹{getSlotPrice(slot,adminDate)}</div>
+                    {blocked.map(slot=>{
+                      const booking_match = history.find(h=>h.sport===sport&&h.date===adminDate&&h.slot===slot);
+                      return (
+                        <div key={slot} style={{ background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:8,padding:"10px 12px" }}>
+                          <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center" }}>
+                            <div>
+                              <div style={{ fontSize:13,color:"#111827",fontWeight:700 }}>⏰ {slot}</div>
+                              <div style={{ fontSize:10,color:"#D97706",marginTop:1 }}>₹{getSlotPrice(slot,adminDate)}</div>
+                              {booking_match && (
+                                <div style={{ fontSize:10,color:"#6B7280",marginTop:3 }}>
+                                  👤 {booking_match.name} · 📞 {booking_match.phone}
+                                </div>
+                              )}
+                            </div>
+                            <button onClick={()=>{ if(window.confirm("Release slot "+slot+"?")) releaseSlot(sport,adminDate,slot); }}
+                              style={{ background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"6px 14px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700 }}>
+                              Release
+                            </button>
+                          </div>
                         </div>
-                        <button onClick={()=>releaseSlot(sport,adminDate,slot)}
-                          style={{ background:"#FEF2F2",border:"1px solid #FECACA",color:"#DC2626",padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700 }}
-                          onMouseEnter={e=>e.currentTarget.style.background="#FEE2E2"}
-                          onMouseLeave={e=>e.currentTarget.style.background="#FEF2F2"}>
-                          Release
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -352,58 +555,67 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
         </div>
       )}
 
-      {adminTab==="history" && (
+      {/* ── STATS TAB ── */}
+      {adminTab==="stats" && (
         <div>
           <div style={{ display:"flex",gap:6,marginBottom:14 }}>
-            {[["day","Today"],["week","Week"],["month","Month"],["all","All"]].map(([f,l])=>(
+            {[["day","Today"],["week","Week"],["month","Month"],["all","All Time"]].map(([f,l])=>(
               <button key={f} onClick={()=>setHistFilter(f)}
-                style={{ flex:1,padding:"7px 4px",borderRadius:7,border:"1.5px solid",fontSize:11,fontWeight:700,cursor:"pointer",
+                style={{ flex:1,padding:"7px 2px",borderRadius:7,border:"1.5px solid",fontSize:10,fontWeight:700,cursor:"pointer",
                   borderColor:histFilter===f?"#15803D":"#BBF7D0",background:histFilter===f?"rgba(21,128,61,0.08)":"#F9FAFB",color:histFilter===f?"#15803D":"#6B7280" }}>
                 {l}
               </button>
             ))}
           </div>
-          <div style={{ display:"flex",gap:10,marginBottom:14 }}>
-            <div style={{ flex:1,background:"rgba(21,128,61,0.06)",border:"1px solid rgba(21,128,61,0.2)",borderRadius:10,padding:"12px",textAlign:"center" }}>
-              <div className="bb" style={{ fontSize:28,color:"#15803D" }}>{filteredHistory.length}</div>
-              <div style={{ fontSize:10,color:"#9CA3AF",letterSpacing:1,textTransform:"uppercase" }}>Bookings</div>
-            </div>
-            <div style={{ flex:1,background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)",borderRadius:10,padding:"12px",textAlign:"center" }}>
-              <div className="bb" style={{ fontSize:28,color:"#D97706" }}>₹{totalRevenue}</div>
-              <div style={{ fontSize:10,color:"#9CA3AF",letterSpacing:1,textTransform:"uppercase" }}>Revenue</div>
-            </div>
-            <div style={{ flex:1,background:"rgba(59,130,246,0.1)",border:"1px solid rgba(59,130,246,0.3)",borderRadius:10,padding:"12px",textAlign:"center" }}>
-              <div className="bb" style={{ fontSize:28,color:"#3b82f6" }}>{filteredHistory.filter(b=>b.sport==="cricket").length}</div>
-              <div style={{ fontSize:10,color:"#9CA3AF",letterSpacing:1,textTransform:"uppercase" }}>Cricket</div>
-            </div>
+
+          {/* Big Stats */}
+          <div style={{ display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14 }}>
+            {[
+              { icon:"📋", label:"Total Bookings", val:filteredHistory.length, col:"#15803D", bg:"rgba(21,128,61,0.06)", bdr:"rgba(21,128,61,0.2)" },
+              { icon:"💰", label:"Total Revenue", val:"₹"+getTotalRevenueDisplay(filteredHistory,getSlotPrice), col:"#D97706", bg:"rgba(217,119,6,0.06)", bdr:"rgba(217,119,6,0.2)" },
+              { icon:"🏏", label:"Cricket Bookings", val:cricketCount, col:"#15803D", bg:"rgba(21,128,61,0.06)", bdr:"rgba(21,128,61,0.2)" },
+              { icon:"⚽", label:"Football Bookings", val:footballCount, col:"#7C3AED", bg:"rgba(124,58,237,0.06)", bdr:"rgba(124,58,237,0.2)" },
+              { icon:"⏳", label:"Pending", val:pendingCount, col:"#854D0E", bg:"#FEF9C3", bdr:"#FDE047" },
+              { icon:"✅", label:"Confirmed", val:filteredHistory.filter(b=>(statusMap[b.bookedAt]||b.status)==="Confirmed").length, col:"#15803D", bg:"#DCFCE7", bdr:"#86EFAC" },
+            ].map(s=>(
+              <div key={s.label} style={{ background:s.bg,border:"1px solid "+s.bdr,borderRadius:12,padding:"14px 12px" }}>
+                <div style={{ fontSize:22,marginBottom:4 }}>{s.icon}</div>
+                <div className="bb" style={{ fontSize:26,color:s.col,lineHeight:1 }}>{s.val}</div>
+                <div style={{ fontSize:10,color:"#9CA3AF",marginTop:3,letterSpacing:0.5 }}>{s.label}</div>
+              </div>
+            ))}
           </div>
-          {filteredHistory.length===0?(
-            <div style={{ textAlign:"center",padding:"30px",color:"#6B7280",fontSize:13 }}>No bookings found for this period</div>
-          ):(
-            <div style={{ display:"flex",flexDirection:"column",gap:8,maxHeight:300,overflowY:"auto" }}>
-              {[...filteredHistory].reverse().map((b,i)=>(
-                <div key={i} style={{ background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:10,padding:"12px 14px" }}>
-                  <div style={{ display:"flex",justifyContent:"space-between",marginBottom:6 }}>
-                    <div className="bb" style={{ fontSize:14,color:b.sport==="cricket"?"#15803D":"#D97706" }}>
-                      {b.sport==="cricket"?"🏏 Cricket":"⚽ Football"}
+
+          {/* Recent Activity */}
+          <div style={{ background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:10,padding:"12px 14px" }}>
+            <div className="bb" style={{ fontSize:12,color:"#15803D",letterSpacing:2,marginBottom:10 }}>RECENT ACTIVITY</div>
+            {history.length===0 ? (
+              <div style={{ fontSize:12,color:"#9CA3AF",textAlign:"center",padding:"12px" }}>No bookings yet</div>
+            ) : (
+              <div style={{ display:"flex",flexDirection:"column",gap:6 }}>
+                {[...history].reverse().slice(0,5).map((b,i)=>(
+                  <div key={i} style={{ display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:11,padding:"6px 0",borderBottom:"1px solid #E5E7EB" }}>
+                    <div>
+                      <span style={{ color:b.sport==="cricket"?"#15803D":"#D97706",fontWeight:700 }}>{b.sport==="cricket"?"🏏":"⚽"} {b.name}</span>
+                      <span style={{ color:"#9CA3AF",marginLeft:6 }}>· {b.date}</span>
                     </div>
-                    <div className="bb" style={{ fontSize:16,color:"#D97706" }}>₹{b.amount}</div>
+                    <span style={{ color:"#D97706",fontWeight:700 }}>₹{getTotalAmount(b)}</span>
                   </div>
-                  <div style={{ fontSize:11,color:"#4B5563",lineHeight:1.8 }}>
-                    📅 {getDayName(b.date)}<br/>
-                    ⏰ {b.slot}<br/>
-                    👤 {b.name} · {b.phone}<br/>
-                    {b.players!=="-"&&<>👥 {b.players} players<br/></>}
-                    <span style={{ fontSize:10,color:"#9CA3AF" }}>🕐 {b.bookedAt}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
+}
+
+function getTotalRevenueDisplay(list, getSlotPrice) {
+  return list.reduce((sum,b)=>{
+    if (b.hours && b.slot && b.date) return sum + getSlotPrice(b.slot,b.date)*b.hours;
+    return sum + (Number(b.amount)||0);
+  },0);
 }
 
 function App() {
