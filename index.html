@@ -196,18 +196,12 @@ function pushHistoryEntry(entry) {
 }
 
 function loadBookings() {
-  try {
-    const saved = localStorage.getItem("turf28_bookings");
-    if (saved) return JSON.parse(saved);
-  } catch(e) {}
+  // Always start empty — Firebase is the only source of truth
   return BASE_BOOKINGS;
 }
 
 function loadHistory() {
-  try {
-    const saved = localStorage.getItem("turf28_history");
-    if (saved) return JSON.parse(saved);
-  } catch(e) {}
+  // Always start empty — Firebase is the only source of truth
   return [];
 }
 
@@ -644,6 +638,10 @@ function App() {
   const [fbLoading, setFbLoading] = useState(true);
 
   useEffect(() => {
+    // Clear localStorage on every load — Firebase is the only source of truth
+    try { localStorage.removeItem("turf28_bookings"); } catch(e) {}
+    try { localStorage.removeItem("turf28_history"); } catch(e) {}
+
     const timeout = setTimeout(() => setFbLoading(false), 5000);
     let bRef, hRef;
     try {
@@ -651,10 +649,7 @@ function App() {
       bRef.on("value", snap => {
         clearTimeout(timeout);
         const data = snap.val();
-        if (data) {
-          setBookings(data);
-          try { localStorage.setItem("turf28_bookings", JSON.stringify(data)); } catch(e) {}
-        }
+        setBookings(data || {});
         setFbLoading(false);
       }, err => { console.warn("FB err:", err); setFbLoading(false); });
 
@@ -664,7 +659,8 @@ function App() {
         if (data) {
           const arr = Array.isArray(data) ? data : Object.values(data);
           setHistory(arr);
-          try { localStorage.setItem("turf28_history", JSON.stringify(arr)); } catch(e) {}
+        } else {
+          setHistory([]);
         }
       }, err => console.warn("FB history err:", err));
     } catch(e) {
@@ -710,7 +706,24 @@ function App() {
     const errs = validateForm();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
-    setConfirmed({ ...booking, ...form, selectedSlots: getSelectedSlots() });
+    const confirmedData = { ...booking, ...form, selectedSlots: getSelectedSlots() };
+    setConfirmed(confirmedData);
+
+    // ✅ Block slot IMMEDIATELY in Firebase when user confirms — don't wait for WhatsApp
+    const slotsToBlock = confirmedData.selectedSlots || [confirmedData.slot];
+    const { sport, date } = confirmedData;
+    db.ref("bookings").once("value", snap => {
+      const current = snap.val() || {};
+      if (!current[date]) current[date] = { cricket:[], football:[] };
+      const existing = current[date][sport] || [];
+      const newSlots = [...new Set([...existing, ...slotsToBlock])];
+      current[date] = { ...current[date], [sport]: newSlots };
+      db.ref("bookings").set(current, err => {
+        if (err) console.warn("FB slot block failed:", err);
+      });
+      setBookings(current);
+    });
+
     setStep(4);
   };
 
@@ -718,19 +731,26 @@ function App() {
   const handlePaymentDone = () => { setStep(5); };
 
   const releaseSlot = (sport, date, slot) => {
-    setBookings(prev => {
-      const u = {...prev};
-      if (u[date] && u[date][sport]) {
-        u[date] = { ...u[date], [sport]: u[date][sport].filter(s => s !== slot) };
+    // Read from Firebase, remove slot, write back
+    db.ref("bookings").once("value", snap => {
+      const current = snap.val() || {};
+      if (current[date] && current[date][sport]) {
+        current[date] = { ...current[date], [sport]: current[date][sport].filter(s => s !== slot) };
       }
-      saveBookings(u);
-      return u;
+      db.ref("bookings").set(current, err => {
+        if (err) console.warn("FB release failed:", err);
+      });
+      setBookings(current);
     });
-    // Remove from history too
-    setHistory(prev => {
-      const h = prev.filter(b => !(b.sport===sport && b.date===date && b.slot===slot));
-      saveHistory(h);
-      return h;
+    // Remove from Firebase history too
+    db.ref("history").once("value", snap => {
+      const data = snap.val();
+      if (!data) return;
+      Object.entries(data).forEach(([key, val]) => {
+        if (val.sport===sport && val.date===date && val.slot===slot) {
+          db.ref("history/"+key).remove();
+        }
+      });
     });
   };
 
@@ -1407,25 +1427,10 @@ function App() {
                   onClick={() => {
                     const { sport, date, slot, selectedSlots, hours } = confirmed;
                     const slotsToBlock = selectedSlots || [slot];
-
-                    // 1. Read current bookings from Firebase directly, then update
-                    db.ref("bookings").once("value", snap => {
-                      const current = snap.val() || {};
-                      if (!current[date]) current[date] = { cricket:[], football:[] };
-                      const existing = current[date][sport] || [];
-                      const newSlots = [...new Set([...existing, ...slotsToBlock])];
-                      current[date] = { ...current[date], [sport]: newSlots };
-                      // Save updated bookings to Firebase
-                      db.ref("bookings").set(current, err => {
-                        if (err) console.warn("FB booking write failed:", err);
-                      });
-                      // Update local state + localStorage
-                      setBookings(current);
-                      try { localStorage.setItem("turf28_bookings", JSON.stringify(current)); } catch(e) {}
-                    });
-
                     const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours||1);
                     const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
+
+                    // Send WhatsApp message
                     const msg =
                       "🔔 *New Booking – Turf 28*\n\n" +
                       "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "\n" +
@@ -1439,14 +1444,14 @@ function App() {
                       "\n📸 Payment screenshot attached. Please confirm my slot.";
                     window.open("https://wa.me/91"+PHONE+"?text="+encodeURIComponent(msg), "_blank");
 
-                    // 2. Save booking entry to Firebase history
+                    // Save booking history entry to Firebase
                     const entry = {
                       sport: confirmed.sport, date: confirmed.date, slot: confirmed.slot,
                       name: confirmed.name, phone: confirmed.phone,
                       players: confirmed.players || "-",
-                      amount: getSlotPrice(confirmed.slot, confirmed.date),
+                      amount: totalAmt,
                       hours: confirmed.hours || 1,
-                      selectedSlots: confirmed.selectedSlots || [confirmed.slot],
+                      selectedSlots: slotsToBlock,
                       bookedAt: new Date().toLocaleString("en-IN"),
                       status: "Pending Confirmation"
                     };
