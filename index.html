@@ -706,15 +706,21 @@ function App() {
     const errs = validateForm();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
-    const confirmedData = { ...booking, ...form, selectedSlots: getSelectedSlots() };
+
+    // Compute slots directly from booking state
+    const startIdx = ALL_SLOTS.indexOf(booking.slot);
+    const computedSlots = [];
+    for (let i = 0; i < (booking.hours || 1); i++) {
+      if (startIdx + i < ALL_SLOTS.length) computedSlots.push(ALL_SLOTS[startIdx + i]);
+    }
+    const slotsToBlock = computedSlots.length > 0 ? computedSlots : [booking.slot];
+    const sport = booking.sport;
+    const date = booking.date;
+
+    const confirmedData = { ...booking, ...form, selectedSlots: slotsToBlock };
     setConfirmed(confirmedData);
 
-    const slotsToBlock = confirmedData.selectedSlots?.length > 0
-      ? confirmedData.selectedSlots
-      : [confirmedData.slot];
-    const { sport, date } = confirmedData;
-
-    // ✅ 1. Update LOCAL state immediately so slot disappears from UI right away
+    // 1. Update LOCAL state immediately
     setBookings(prev => {
       const updated = JSON.parse(JSON.stringify(prev || {}));
       if (!updated[date]) updated[date] = { cricket: [], football: [] };
@@ -723,7 +729,7 @@ function App() {
       return updated;
     });
 
-    // ✅ 2. Also save to Firebase (read-then-write to avoid race conditions)
+    // 2. Save to Firebase immediately
     db.ref("bookings").once("value", snap => {
       const current = snap.val() || {};
       if (!current[date]) current[date] = { cricket: [], football: [] };
