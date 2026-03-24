@@ -694,7 +694,12 @@ function App() {
 
 
 
-  const bookedFor = (sport, date) => bookings[date]?.[sport] || [];
+  // 1 turf only - if any sport books a slot, both sports lose that slot
+  const bookedFor = (sport, date) => {
+    const cricket = bookings[date]?.["cricket"] || [];
+    const football = bookings[date]?.["football"] || [];
+    return [...new Set([...cricket, ...football])];
+  };
   const availableFor = (sport, date) => {
     const now = new Date();
     const currentHour = now.getHours();
@@ -744,21 +749,25 @@ function App() {
     const confirmedData = { ...booking, ...form, selectedSlots: slotsToBlock };
     setConfirmed(confirmedData);
 
-    // 1. Update LOCAL state immediately
+    // 1. Update LOCAL state immediately - block BOTH sports (1 turf only)
     setBookings(prev => {
       const updated = JSON.parse(JSON.stringify(prev || {}));
       if (!updated[date]) updated[date] = { cricket: [], football: [] };
-      if (!updated[date][sport]) updated[date][sport] = [];
-      updated[date][sport] = [...new Set([...updated[date][sport], ...slotsToBlock])];
+      if (!updated[date]["cricket"]) updated[date]["cricket"] = [];
+      if (!updated[date]["football"]) updated[date]["football"] = [];
+      updated[date]["cricket"] = [...new Set([...updated[date]["cricket"], ...slotsToBlock])];
+      updated[date]["football"] = [...new Set([...updated[date]["football"], ...slotsToBlock])];
       return updated;
     });
 
-    // 2. Save to Firebase immediately
+    // 2. Save to Firebase immediately - block BOTH sports (1 turf only)
     db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
       if (!current[date]) current[date] = { cricket: [], football: [] };
-      if (!current[date][sport]) current[date][sport] = [];
-      current[date][sport] = [...new Set([...current[date][sport], ...slotsToBlock])];
+      if (!current[date]["cricket"]) current[date]["cricket"] = [];
+      if (!current[date]["football"]) current[date]["football"] = [];
+      current[date]["cricket"] = [...new Set([...current[date]["cricket"], ...slotsToBlock])];
+      current[date]["football"] = [...new Set([...current[date]["football"], ...slotsToBlock])];
       db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("FB slot block failed:", err);
       });
@@ -771,20 +780,27 @@ function App() {
   const handlePaymentDone = () => { setStep(5); };
 
   const releaseSlot = (sport, date, slot) => {
-    // Update local state immediately so UI reflects instantly
+    // Update local state immediately - release from BOTH sports (1 turf only)
     setBookings(prev => {
       const updated = JSON.parse(JSON.stringify(prev || {}));
-      if (updated[date] && updated[date][sport]) {
-        updated[date][sport] = updated[date][sport].filter(s => s !== slot);
+      if (updated[date]) {
+        ["cricket","football"].forEach(sp => {
+          if (updated[date][sp]) {
+            updated[date][sp] = updated[date][sp].filter(s => s !== slot);
+          }
+        });
       }
       return updated;
     });
-    // Write to Firebase
+    // Write to Firebase - release from BOTH sports (1 turf only)
     db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
-      if (current[date] && current[date][sport]) {
-        current[date] = { ...current[date], [sport]: current[date][sport].filter(s => s !== slot) };
-      }
+      if (!current[date]) current[date] = { cricket: [], football: [] };
+      ["cricket","football"].forEach(sp => {
+        if (current[date][sp]) {
+          current[date][sp] = current[date][sp].filter(s => s !== slot);
+        }
+      });
       db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("FB release failed:", err);
       });
