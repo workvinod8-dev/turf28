@@ -835,24 +835,16 @@ function App() {
         const customerEmail = (confirmed.email || "").trim();
         if (customerEmail) {
           const emailParams = {
-            to_email:   customerEmail,
-            email:      customerEmail,
-            order_id:   response.razorpay_payment_id,
-            name:       confirmed.name + " — " + (confirmed.sport === "cricket" ? "Cricket Turf" : "Football Turf"),
-            price:      "Rs. " + totalAmt,
-            units:      (confirmed.hours || 1) + " hr(s) · " + confirmed.slot + " → " + endTime,
-            "cost.shipping": getDayName(confirmed.date),
-            "cost.tax": confirmed.phone,
-            "cost.total": "Rs. " + totalAmt,
-            // Extra params for reference
-            sport:      confirmed.sport === "cricket" ? "Cricket Turf" : "Football Turf",
-            date:       getDayName(confirmed.date),
-            slot:       confirmed.slot,
-            end_time:   endTime,
-            duration:   (confirmed.hours || 1) + " hour(s)",
-            amount:     "Rs. " + totalAmt,
-            phone:      confirmed.phone,
-            payment_id: response.razorpay_payment_id,
+            to_email:      customerEmail,
+            customer_name: confirmed.name,
+            sport:         confirmed.sport === "cricket" ? "🏏 Cricket Turf" : "⚽ Football Turf",
+            date:          getDayName(confirmed.date),
+            slot:          confirmed.slot.split("–")[0].trim(),
+            end_time:      endTime,
+            duration:      (confirmed.hours || 1) + " hour(s)",
+            amount:        "Rs. " + totalAmt,
+            phone:         confirmed.phone,
+            payment_id:    response.razorpay_payment_id,
           };
           emailjs.send(
             window.EMAILJS_SERVICE_ID,
