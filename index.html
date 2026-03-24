@@ -178,7 +178,7 @@ const BASE_BOOKINGS = {};
 
 function saveBookings(b) {
   try {
-    db.ref("bookings").set(b, err => {
+    db.ref("bookedSlots").set(b, err => {
       if (err) console.warn("FB write failed:", err);
     });
   } catch(e) { console.warn("FB save error:", e); }
@@ -192,7 +192,7 @@ function saveHistory(h) {
 }
 
 function pushHistoryEntry(entry) {
-  try { db.ref("history").push(entry); } catch(e) { console.warn("FB push error:", e); }
+  try { db.ref("bookingHistory").push(entry); } catch(e) { console.warn("FB push error:", e); }
 }
 
 function loadBookings() {
@@ -645,15 +645,31 @@ function App() {
     const timeout = setTimeout(() => setFbLoading(false), 5000);
     let bRef, hRef;
     try {
-      bRef = db.ref("bookings");
+      bRef = db.ref("bookedSlots");
       bRef.on("value", snap => {
         clearTimeout(timeout);
-        const data = snap.val();
-        setBookings(data || {});
+        const data = snap.val() || {};
+        // Always merge FB data with local pending slots (never lose locally blocked slots)
+        setBookings(prev => {
+          const merged = JSON.parse(JSON.stringify(data));
+          // Preserve any locally blocked slots not yet confirmed by Firebase
+          Object.keys(prev || {}).forEach(d => {
+            ['cricket','football'].forEach(sp => {
+              const localSlots = (prev[d]?.[sp] || []);
+              const fbSlots = (merged[d]?.[sp] || []);
+              const union = [...new Set([...fbSlots, ...localSlots])];
+              if (union.length > 0) {
+                if (!merged[d]) merged[d] = {};
+                merged[d][sp] = union;
+              }
+            });
+          });
+          return merged;
+        });
         setFbLoading(false);
       }, err => { console.warn("FB err:", err); setFbLoading(false); });
 
-      hRef = db.ref("history");
+      hRef = db.ref("bookingHistory");
       hRef.on("value", snap => {
         const data = snap.val();
         if (data) {
@@ -679,10 +695,17 @@ function App() {
 
   const bookedFor = (sport, date) => bookings[date]?.[sport] || [];
   const availableFor = (sport, date) => {
-    const currentHour = new Date().getHours(); // e.g. 11 if 11:01 AM
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
     return ALL_SLOTS.filter(s => {
       if (bookedFor(sport, date).includes(s)) return false; // already booked
-      if (date === getToday() && getSlotHour(s) < currentHour) return false; // past slot
+      const slotHour = getSlotHour(s);
+      // Hide slot if current time has passed its start (e.g. 10:01 means 10AM slot gone)
+      if (date === getToday()) {
+        if (slotHour < currentHour) return false; // fully past
+        if (slotHour === currentHour && currentMinute > 0) return false; // started
+      }
       return true;
     });
   };
@@ -730,12 +753,12 @@ function App() {
     });
 
     // 2. Save to Firebase immediately
-    db.ref("bookings").once("value", snap => {
+    db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
       if (!current[date]) current[date] = { cricket: [], football: [] };
       if (!current[date][sport]) current[date][sport] = [];
       current[date][sport] = [...new Set([...current[date][sport], ...slotsToBlock])];
-      db.ref("bookings").set(current, err => {
+      db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("FB slot block failed:", err);
       });
     });
@@ -747,24 +770,31 @@ function App() {
   const handlePaymentDone = () => { setStep(5); };
 
   const releaseSlot = (sport, date, slot) => {
-    // Read from Firebase, remove slot, write back
-    db.ref("bookings").once("value", snap => {
+    // Update local state immediately so UI reflects instantly
+    setBookings(prev => {
+      const updated = JSON.parse(JSON.stringify(prev || {}));
+      if (updated[date] && updated[date][sport]) {
+        updated[date][sport] = updated[date][sport].filter(s => s !== slot);
+      }
+      return updated;
+    });
+    // Write to Firebase
+    db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
       if (current[date] && current[date][sport]) {
         current[date] = { ...current[date], [sport]: current[date][sport].filter(s => s !== slot) };
       }
-      db.ref("bookings").set(current, err => {
+      db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("FB release failed:", err);
       });
-      setBookings(current);
     });
     // Remove from Firebase history too
-    db.ref("history").once("value", snap => {
+    db.ref("bookingHistory").once("value", snap => {
       const data = snap.val();
       if (!data) return;
       Object.entries(data).forEach(([key, val]) => {
         if (val.sport===sport && val.date===date && val.slot===slot) {
-          db.ref("history/"+key).remove();
+          db.ref("bookingHistory/"+key).remove();
         }
       });
     });
@@ -799,13 +829,19 @@ function App() {
     const startIdx = ALL_SLOTS.indexOf(startSlot);
     if (startIdx === -1) return false;
     const booked = bookedFor(sport, date);
-    const currentHour = new Date().getHours();
+    const now2 = new Date();
+    const currentHour = now2.getHours();
+    const currentMinute = now2.getMinutes();
     for (let i = 0; i < hours; i++) {
       const idx = startIdx + i;
       if (idx >= ALL_SLOTS.length) return false;
       const s = ALL_SLOTS[idx];
       if (booked.includes(s)) return false;
-      if (date === getToday() && getSlotHour(s) < currentHour) return false;
+      if (date === getToday()) {
+        const sh = getSlotHour(s);
+        if (sh < currentHour) return false;
+        if (sh === currentHour && currentMinute > 0) return false;
+      }
     }
     return true;
   };
