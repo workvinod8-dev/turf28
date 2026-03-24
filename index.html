@@ -32,7 +32,7 @@
   // Step 3: Email Templates tab mein apni template ka TEMPLATE ID copy karo
   const EMAILJS_PUBLIC_KEY  = "ToZA8IUzWW7ve-J8W";   // ← yahan apni key daalo
   const EMAILJS_SERVICE_ID  = "service_9dqw9sn";   // ← e.g. "service_abc123"
-  const EMAILJS_TEMPLATE_ID = "template_rdbxx58";  // ← e.g. "template_xyz789"
+  const EMAILJS_TEMPLATE_ID = "template_2koe8xr";  // ← Order Confirmation template
   // ──────────────────────────────────────────────────────────────────
   window.EMAILJS_PUBLIC_KEY  = EMAILJS_PUBLIC_KEY;
   window.EMAILJS_SERVICE_ID  = EMAILJS_SERVICE_ID;
@@ -835,10 +835,16 @@ function App() {
         const customerEmail = (confirmed.email || "").trim();
         if (customerEmail) {
           const emailParams = {
-            email:      customerEmail,
             to_email:   customerEmail,
+            email:      customerEmail,
             order_id:   response.razorpay_payment_id,
-            name:       confirmed.name,
+            name:       confirmed.name + " — " + (confirmed.sport === "cricket" ? "Cricket Turf" : "Football Turf"),
+            price:      "Rs. " + totalAmt,
+            units:      (confirmed.hours || 1) + " hr(s) · " + confirmed.slot + " → " + endTime,
+            "cost.shipping": getDayName(confirmed.date),
+            "cost.tax": confirmed.phone,
+            "cost.total": "Rs. " + totalAmt,
+            // Extra params for reference
             sport:      confirmed.sport === "cricket" ? "Cricket Turf" : "Football Turf",
             date:       getDayName(confirmed.date),
             slot:       confirmed.slot,
@@ -1325,6 +1331,27 @@ function App() {
                   </div>
                 </div>
               ))}
+            </div>
+            {/* Google Maps Embed */}
+            <div style={{ marginBottom:20, borderRadius:14, overflow:"hidden", border:"1.5px solid #BBF7D0", boxShadow:"0 2px 16px rgba(21,128,61,0.08)" }}>
+              <div style={{ background:"#F0FDF4", padding:"10px 16px", display:"flex", alignItems:"center", gap:8, borderBottom:"1px solid #BBF7D0" }}>
+                <span style={{ fontSize:16 }}>📍</span>
+                <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize:14, letterSpacing:2, color:"#15803D" }}>GET DIRECTIONS</span>
+                <a href="https://www.google.com/maps/dir/?api=1&destination=16.82699969026759,75.67389781240236" target="_blank" rel="noopener noreferrer"
+                  style={{ marginLeft:"auto", fontSize:11, color:"#15803D", fontWeight:700, textDecoration:"none", padding:"4px 12px", border:"1px solid #15803D", borderRadius:20 }}>
+                  Open in Maps ↗
+                </a>
+              </div>
+              <iframe
+                title="Turf 28 Location"
+                src="https://www.google.com/maps?q=16.82699969026759,75.67389781240236&z=17&output=embed"
+                width="100%"
+                height="280"
+                style={{ border:"none", display:"block" }}
+                allowFullScreen=""
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+              />
             </div>
             <div style={{ display:"flex",gap:14,flexWrap:"wrap" }}>
               <a href={CALL} className="btn bcl" style={{ flex:1,minWidth:190,justifyContent:"center",fontSize:18 }}><CALL_ICON/> +91 {PHONE}</a>
