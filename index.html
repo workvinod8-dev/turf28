@@ -23,6 +23,7 @@
   const db = firebase.database();
 </script>
 
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -735,46 +736,103 @@ function App() {
     const errs = validateForm();
     if (Object.keys(errs).length > 0) { setErrors(errs); return; }
     setErrors({});
-
-    // Compute slots directly from booking state
     const startIdx = ALL_SLOTS.indexOf(booking.slot);
     const computedSlots = [];
     for (let i = 0; i < (booking.hours || 1); i++) {
       if (startIdx + i < ALL_SLOTS.length) computedSlots.push(ALL_SLOTS[startIdx + i]);
     }
-    const slotsToBlock = computedSlots.length > 0 ? computedSlots : [booking.slot];
-    const sport = booking.sport;
-    const date = booking.date;
-
-    const confirmedData = { ...booking, ...form, selectedSlots: slotsToBlock };
-    setConfirmed(confirmedData);
-
-    // 1. Update LOCAL state immediately - block BOTH sports (1 turf only)
-    setBookings(prev => {
-      const updated = JSON.parse(JSON.stringify(prev || {}));
-      if (!updated[date]) updated[date] = { cricket: [], football: [] };
-      if (!updated[date]["cricket"]) updated[date]["cricket"] = [];
-      if (!updated[date]["football"]) updated[date]["football"] = [];
-      updated[date]["cricket"] = [...new Set([...updated[date]["cricket"], ...slotsToBlock])];
-      updated[date]["football"] = [...new Set([...updated[date]["football"], ...slotsToBlock])];
-      return updated;
-    });
-
-    // 2. Save to Firebase immediately - block BOTH sports (1 turf only)
-    db.ref("bookedSlots").once("value", snap => {
-      const current = snap.val() || {};
-      if (!current[date]) current[date] = { cricket: [], football: [] };
-      if (!current[date]["cricket"]) current[date]["cricket"] = [];
-      if (!current[date]["football"]) current[date]["football"] = [];
-      current[date]["cricket"] = [...new Set([...current[date]["cricket"], ...slotsToBlock])];
-      current[date]["football"] = [...new Set([...current[date]["football"], ...slotsToBlock])];
-      db.ref("bookedSlots").set(current, err => {
-        if (err) console.warn("FB slot block failed:", err);
-      });
-    });
-
-    setStep(4);
+    setConfirmed({ ...booking, ...form, selectedSlots: computedSlots.length > 0 ? computedSlots : [booking.slot] });
+    setStep(4); // go to Razorpay payment
   };
+
+  const handleRazorpayPayment = () => {
+    const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours || 1);
+    const options = {
+      key: "rzp_test_SV3y7JKV7tqCQs",
+      amount: totalAmt * 100, // paise
+      currency: "INR",
+      name: "Turf 28 Sports Arena",
+      description: `${confirmed.sport==="cricket"?"Cricket":"Football"} Booking - ${confirmed.slot}`,
+      image: "",
+      handler: function(response) {
+        // Payment successful — now block slots
+        const { sport, date, selectedSlots, slot } = confirmed;
+        const slotsToBlock = selectedSlots || [slot];
+        setBookings(prev => {
+          const u = {...prev};
+          if (!u[date]) u[date] = { cricket:[], football:[] };
+          const existing = u[date][sport] || [];
+          u[date] = { ...u[date], [sport]: [...new Set([...existing, ...slotsToBlock])] };
+          saveBookings(u);
+          return u;
+        });
+        // Save to history
+        const entry = {
+          sport: confirmed.sport, date: confirmed.date, slot: confirmed.slot,
+          name: confirmed.name, phone: confirmed.phone,
+          players: confirmed.players || "-",
+          amount: totalAmt,
+          hours: confirmed.hours || 1,
+          paymentId: response.razorpay_payment_id,
+          bookedAt: new Date().toLocaleString("en-IN"),
+          status: "Paid"
+        };
+        setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
+        // Send WhatsApp confirmation to CUSTOMER
+        const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
+        const customerMsg =
+          "✅ *Booking Confirmed – Turf 28!*
+
+" +
+          "Hi " + confirmed.name + "! Your slot is confirmed.
+
+" +
+          "🏟️ *Turf 28 Sports Arena*
+" +
+          "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "
+" +
+          "📅 Date: " + getDayName(confirmed.date) + "
+" +
+          "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "
+" +
+          "⌛ Duration: " + (confirmed.hours||1) + " hour(s)
+" +
+          "💰 Amount Paid: ₹" + totalAmt + "
+" +
+          "🆔 Payment ID: " + response.razorpay_payment_id + "
+
+" +
+          "📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura
+" +
+          "📞 For queries: +91 8552893927
+
+" +
+          "_See you on the field!_ 🎉";
+        window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
+        setStep(5);
+      },
+      prefill: {
+        name: confirmed.name,
+        contact: confirmed.phone
+      },
+      notes: {
+        sport: confirmed.sport,
+        date: confirmed.date,
+        slot: confirmed.slot
+      },
+      theme: { color: "#15803D" },
+      modal: {
+        ondismiss: function() {
+          console.log("Payment cancelled");
+        }
+      }
+    };
+    const rzp = new window.Razorpay(options);
+    rzp.on("payment.failed", function(response) {
+      alert("Payment failed: " + response.error.description + ". Please try again.");
+    });
+    rzp.open();
+  };;
 
   // Not used anymore - kept for reference
   const handlePaymentDone = () => { setStep(5); };
@@ -1424,20 +1482,21 @@ function App() {
             </div>
           )}
 
-          {/* ── STEP 4 — PAYMENT ── */}
+                    {/* ── STEP 4 — RAZORPAY PAYMENT ── */}
           {step===4 && confirmed && (
             <div className="fu" style={{ textAlign:"center" }}>
               <div style={{ fontSize:56,marginBottom:10 }}>💳</div>
               <h2 className="bb" style={{ fontSize:38,color:"#15803D",marginBottom:4 }}>COMPLETE PAYMENT</h2>
-              <p style={{ color:"#6B7280",marginBottom:22,fontSize:13 }}>Pay via UPI & send screenshot on WhatsApp — we will confirm your slot manually.</p>
+              <p style={{ color:"#6B7280",marginBottom:22,fontSize:13 }}>Pay securely via Razorpay — slot will be confirmed instantly after payment.</p>
 
               {/* Booking Summary */}
-              <div style={{ background:"#ffffff",border:"1px solid #BBF7D0",borderRadius:13,padding:"18px 22px",marginBottom:20,textAlign:"left" }}>
+              <div style={{ background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:13,padding:"18px 22px",marginBottom:20,textAlign:"left" }}>
                 <div className="bb" style={{ fontSize:11,color:"#6B7280",letterSpacing:3,marginBottom:12 }}>BOOKING SUMMARY</div>
                 {[
                   ["Sport", confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football"],
                   ["Date", getDayName(confirmed.date)],
-                  ["Slot", confirmed.slot],
+                  ["Start Time", confirmed.slot ? confirmed.slot.split("–")[0].trim() : ""],
+                  ["Duration", (confirmed.hours||1)+" hour(s)"],
                   ["Name", confirmed.name],
                   ["Phone", confirmed.phone],
                 ].map(([k,v])=>(
@@ -1447,99 +1506,33 @@ function App() {
                   </div>
                 ))}
                 <div className="cr" style={{ borderBottom:"none" }}>
-                  <span style={{ color:"#6B7280",fontSize:12,fontWeight:600 }}>Amount</span>
-                  <span className="bb" style={{ color:"#D97706",fontSize:22 }}>₹{getSlotPrice(confirmed.slot,confirmed.date)}</span>
+                  <span style={{ color:"#6B7280",fontSize:12,fontWeight:600 }}>Total Amount</span>
+                  <span className="bb" style={{ color:"#D97706",fontSize:24 }}>₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)}</span>
                 </div>
               </div>
 
-              {/* Step 1 of payment: Pay first */}
-              <div style={{ background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:13,padding:"22px",marginBottom:16 }}>
-                <div style={{ fontSize:11,color:"#15803D",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:4 }}>Step 1 — Pay via UPI</div>
-                <div style={{ fontSize:12,color:"#6B7280",marginBottom:16 }}>Click any app below — amount will be auto-filled</div>
-                <div style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:16 }}>
-                  {/* GPay */}
-                  <button onClick={()=>openUPI(getSlotPrice(confirmed.slot,confirmed.date))}
-                    style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"14px 18px",background:"#fff",border:"2px solid #e0e0e0",borderRadius:12,cursor:"pointer",transition:"all .2s",minWidth:88 }}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#4285F4";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(66,133,244,0.3)"}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor="#e0e0e0";e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                    <svg width="38" height="38" viewBox="0 0 48 48"><path fill="#4285F4" d="M44.5 20H24v8.5h11.8C34.3 33.9 29.7 37 24 37c-7.2 0-13-5.8-13-13s5.8-13 13-13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21c10.5 0 20-7.9 20-21 0-1.3-.2-2.7-.5-4z"/><path fill="#34A853" d="M6.3 14.7l7 5.1C15 16.1 19.2 13 24 13c3.1 0 5.9 1.1 8.1 2.9l6.4-6.4C34.6 5.1 29.6 3 24 3c-7.7 0-14.4 4.4-17.7 11.7z"/><path fill="#FBBC05" d="M24 45c5.5 0 10.5-1.9 14.3-5.1l-6.6-5.6C29.7 36 27 37 24 37c-5.7 0-10.3-3.1-11.8-8.5l-7 5.4C8.6 40.7 15.8 45 24 45z"/><path fill="#EA4335" d="M44.5 20H24v8.5h11.8c-.7 2.3-2.1 4.2-4 5.6l6.6 5.6C41.8 36.2 45 30.5 45 24c0-1.3-.2-2.7-.5-4z"/></svg>
-                    <span style={{ fontSize:12,color:"#333",fontWeight:700 }}>GPay</span>
-                  </button>
-                  {/* PhonePe */}
-                  <button onClick={()=>openUPI(getSlotPrice(confirmed.slot,confirmed.date))}
-                    style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"14px 18px",background:"#5f259f",border:"2px solid #7b35c4",borderRadius:12,cursor:"pointer",transition:"all .2s",minWidth:88 }}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#fff";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(95,37,159,0.5)"}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor="#7b35c4";e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                    <svg width="38" height="38" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#5f259f"/><path fill="#fff" d="M30.5 12h-8.3c-1 0-1.9.6-2.3 1.5L13 30.5c-.3.7.2 1.5 1 1.5h3.8l-1.5 4h3.5l1.5-4H30c4.1 0 7-3.4 7-7.5V19c0-3.9-2.9-7-6.5-7zm2.5 12.5c0 2.2-1.6 3.5-3.5 3.5h-8l3.8-10h4.2c1.9 0 3.5 1.6 3.5 3.5v3z"/></svg>
-                    <span style={{ fontSize:12,color:"#fff",fontWeight:700 }}>PhonePe</span>
-                  </button>
-                  {/* Paytm */}
-                  <button onClick={()=>openUPI(getSlotPrice(confirmed.slot,confirmed.date))}
-                    style={{ display:"flex",flexDirection:"column",alignItems:"center",gap:8,padding:"14px 18px",background:"#00BAF2",border:"2px solid #00a8db",borderRadius:12,cursor:"pointer",transition:"all .2s",minWidth:88 }}
-                    onMouseEnter={e=>{e.currentTarget.style.borderColor="#fff";e.currentTarget.style.transform="translateY(-3px)";e.currentTarget.style.boxShadow="0 6px 20px rgba(0,186,242,0.4)"}}
-                    onMouseLeave={e=>{e.currentTarget.style.borderColor="#00a8db";e.currentTarget.style.transform="none";e.currentTarget.style.boxShadow="none"}}>
-                    <svg width="38" height="38" viewBox="0 0 48 48"><rect width="48" height="48" rx="8" fill="#00BAF2"/><text x="24" y="30" textAnchor="middle" fontSize="14" fontWeight="900" fill="#fff" fontFamily="Arial">Paytm</text></svg>
-                    <span style={{ fontSize:12,color:"#fff",fontWeight:700 }}>Paytm</span>
-                  </button>
+              {/* Pay Button */}
+              <div style={{ background:"#F9FAFB",border:"1px solid #BBF7D0",borderRadius:12,padding:"20px",marginBottom:16 }}>
+                <div style={{ fontSize:12,color:"#6B7280",marginBottom:16,lineHeight:1.6 }}>
+                  🔒 Secure payment powered by <strong style={{ color:"#072654" }}>Razorpay</strong><br/>
+                  Pay via UPI, Card, NetBanking or Wallet
                 </div>
-                <div style={{ background:"rgba(0,212,106,0.06)",border:"1px solid #BBF7D0",borderRadius:8,padding:"10px 14px" }}>
-                  <div style={{ fontSize:10,color:"#9CA3AF",letterSpacing:1,marginBottom:3 }}>UPI ID</div>
-                  <div style={{ fontSize:15,color:"#15803D",fontWeight:700,fontFamily:"monospace" }}>7411407075@ybl</div>
+                <div style={{ display:"flex",gap:12,justifyContent:"center",marginBottom:12,flexWrap:"wrap" }}>
+                  {["GPay","PhonePe","Paytm","Card","NetBanking"].map(m=>(
+                    <span key={m} style={{ padding:"4px 10px",background:"#fff",border:"1px solid #BBF7D0",borderRadius:6,fontSize:11,color:"#374151",fontWeight:600 }}>{m}</span>
+                  ))}
                 </div>
-              </div>
-
-              {/* Step 2: Send screenshot on WhatsApp */}
-              <div style={{ background:"#F0FFF4",border:"1px solid rgba(37,211,102,0.3)",borderRadius:13,padding:"22px",marginBottom:16 }}>
-                <div style={{ fontSize:11,color:"#25D366",fontWeight:700,letterSpacing:2,textTransform:"uppercase",marginBottom:4 }}>Step 2 — Send Payment Screenshot</div>
-                <div style={{ fontSize:12,color:"#6B7280",marginBottom:16 }}>After paying, send your payment screenshot on WhatsApp. We will confirm your slot within a few minutes.</div>
                 <button
-                  onClick={() => {
-                    const { sport, date, slot, selectedSlots, hours } = confirmed;
-                    const slotsToBlock = selectedSlots || [slot];
-                    const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours||1);
-                    const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
-
-                    // Send WhatsApp message
-                    const msg =
-                      "🔔 *New Booking – Turf 28*\n\n" +
-                      "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "\n" +
-                      "📅 Date: " + getDayName(confirmed.date) + "\n" +
-                      "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "\n" +
-                      "⌛ Duration: " + (confirmed.hours||1) + " hour(s)\n" +
-                      "💰 Total: ₹" + totalAmt + "\n" +
-                      "👤 Name: " + confirmed.name + "\n" +
-                      "📞 Phone: " + confirmed.phone + "\n" +
-                      (confirmed.players ? "👥 Players: " + confirmed.players + "\n" : "") +
-                      "\n📸 Payment screenshot attached. Please confirm my slot.";
-                    window.open("https://wa.me/91"+PHONE+"?text="+encodeURIComponent(msg), "_blank");
-
-                    // Save booking history entry to Firebase
-                    const entry = {
-                      sport: confirmed.sport, date: confirmed.date, slot: confirmed.slot,
-                      name: confirmed.name, phone: confirmed.phone,
-                      players: confirmed.players || "-",
-                      amount: totalAmt,
-                      hours: confirmed.hours || 1,
-                      selectedSlots: slotsToBlock,
-                      bookedAt: new Date().toLocaleString("en-IN"),
-                      status: "Pending Confirmation"
-                    };
-                    pushHistoryEntry(entry);
-                    setStep(5);
-                  }}
-                  className="btn bwa" style={{ width:"100%",fontSize:17,padding:"15px",justifyContent:"center",border:"none",cursor:"pointer" }}>
-                  <WA_ICON/> Send Screenshot & Confirm Slot
+                  onClick={handleRazorpayPayment}
+                  style={{ width:"100%",padding:"16px",background:"#15803D",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:2,cursor:"pointer",transition:"all .2s" }}
+                  onMouseEnter={e=>e.currentTarget.style.background="#166534"}
+                  onMouseLeave={e=>e.currentTarget.style.background="#15803D"}>
+                  💳 PAY ₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)} & CONFIRM SLOT
                 </button>
               </div>
 
-              <div style={{ background:"rgba(255,122,0,0.06)",border:"1px solid #FDE68A",borderRadius:10,padding:"12px 16px",marginBottom:16 }}>
-                <p style={{ fontSize:12,color:"#92400E",lineHeight:1.6 }}>
-                  📋 <strong style={{color:"#92400E"}}>How it works:</strong><br/>
-                  1. Pay via UPI above<br/>
-                  2. Click "Send Screenshot on WhatsApp"<br/>
-                  3. Attach your payment screenshot & send<br/>
-                  4. We will confirm your slot on WhatsApp ✅
-                </p>
+              <div style={{ background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:9,padding:"12px 16px",marginBottom:16 }}>
+                <p style={{ fontSize:12,color:"#92400E" }}>⚠️ Slot will be booked <strong>only after successful payment</strong>. You will receive a WhatsApp confirmation on your number.</p>
               </div>
 
               <button className="btn bou" style={{ width:"100%",fontSize:15,padding:"12px" }} onClick={()=>setStep(3)}>
@@ -1552,8 +1545,8 @@ function App() {
           {step===5 && confirmed && (
             <div className="fu" style={{ textAlign:"center" }}>
               <div style={{ fontSize:64,marginBottom:10 }}>📨</div>
-              <h2 className="bb" style={{ fontSize:44,color:"#15803D",marginBottom:6 }}>REQUEST SENT!</h2>
-              <p style={{ color:"#6B7280",marginBottom:26 }}>Hi {confirmed.name}, we received your booking request!</p>
+              <h2 className="bb" style={{ fontSize:44,color:"#15803D",marginBottom:6 }}>BOOKING CONFIRMED! 🎉</h2>
+              <p style={{ color:"#6B7280",marginBottom:26 }}>Payment successful! Your slot is booked, {confirmed.name}!</p>
               <div style={{ background:"#ffffff",border:"1px solid #BBF7D0",borderRadius:13,padding:"20px 24px",marginBottom:18,textAlign:"left" }}>
                 <div className="bb" style={{ fontSize:11,color:"#6B7280",letterSpacing:3,marginBottom:13 }}>BOOKING DETAILS</div>
                 {[
@@ -1574,7 +1567,7 @@ function App() {
                 ))}
               </div>
               <div style={{ background:"rgba(21,128,61,0.06)",border:"1px solid rgba(21,128,61,0.2)",borderRadius:9,padding:"12px 16px",marginBottom:20 }}>
-                <p style={{ fontSize:12,color:"#4B5563",lineHeight:1.7 }}>📲 Send your <strong style={{color:"#15803D"}}>payment screenshot on WhatsApp</strong> to the number below. We will confirm your slot within a few minutes. Please arrive 10 minutes early.</p>
+                <p style={{ fontSize:12,color:"#4B5563",lineHeight:1.7 }}>📲 ✅ Payment received & slot confirmed! A WhatsApp confirmation has been sent to your number. Please arrive 10 minutes early.</p>
               </div>
               <div style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap",marginBottom:10 }}>
                 <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="btn bwa"><WA_ICON/> WhatsApp</a>
