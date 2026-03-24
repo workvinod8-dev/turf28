@@ -770,57 +770,93 @@ function App() {
       description: `${confirmed.sport==="cricket"?"Cricket":"Football"} Booking - ${confirmed.slot}`,
       image: "",
       handler: function(response) {
-        // Payment successful — now block slots
+        // ── 1. SLOTS BLOCK — Firebase se pehle read karo, phir atomic update ──
         const { sport, date, selectedSlots, slot } = confirmed;
         const slotsToBlock = selectedSlots || [slot];
+        const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
+
+        db.ref("bookedSlots").once("value", snap => {
+          const current = snap.val() || {};
+          if (!current[date]) current[date] = { cricket: [], football: [] };
+          // 1 turf only — both sports lose same slot
+          ["cricket", "football"].forEach(sp => {
+            const existing = current[date][sp] || [];
+            current[date][sp] = [...new Set([...existing, ...slotsToBlock])];
+          });
+          db.ref("bookedSlots").set(current, err => {
+            if (err) console.warn("❌ bookedSlots write failed:", err);
+            else console.log("✅ Slots blocked in Firebase");
+          });
+        });
+
+        // Update local state immediately (UI me turant dikhega)
         setBookings(prev => {
-          const u = {...prev};
-          if (!u[date]) u[date] = { cricket:[], football:[] };
-          const existing = u[date][sport] || [];
-          u[date] = { ...u[date], [sport]: [...new Set([...existing, ...slotsToBlock])] };
-          saveBookings(u);
+          const u = JSON.parse(JSON.stringify(prev || {}));
+          if (!u[date]) u[date] = { cricket: [], football: [] };
+          ["cricket", "football"].forEach(sp => {
+            const existing = u[date][sp] || [];
+            u[date][sp] = [...new Set([...existing, ...slotsToBlock])];
+          });
           return u;
         });
-        // Save to history
+
+        // ── 2. BOOKING HISTORY — Firebase mein push karo ─────────────
         const entry = {
-          sport: confirmed.sport, date: confirmed.date, slot: confirmed.slot,
-          name: confirmed.name, phone: confirmed.phone,
-          players: confirmed.players || "-",
-          amount: totalAmt,
-          hours: confirmed.hours || 1,
-          paymentId: response.razorpay_payment_id,
-          bookedAt: new Date().toLocaleString("en-IN"),
-          status: "Paid"
+          sport:         confirmed.sport,
+          date:          confirmed.date,
+          slot:          confirmed.slot,
+          selectedSlots: slotsToBlock,
+          endTime:       endTime,
+          name:          confirmed.name,
+          phone:         confirmed.phone,
+          email:         confirmed.email || "",
+          players:       confirmed.players || "-",
+          amount:        totalAmt,
+          hours:         confirmed.hours || 1,
+          paymentId:     response.razorpay_payment_id,
+          bookedAt:      new Date().toLocaleString("en-IN"),
+          status:        "Paid"
         };
-        setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
-        // Send WhatsApp confirmation to CUSTOMER
-        const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
+
+        // Firebase push — yahi asli save hai
+        db.ref("bookingHistory").push(entry, err => {
+          if (err) console.warn("❌ bookingHistory push failed:", err);
+          else console.log("✅ Booking saved to Firebase bookingHistory!");
+        });
+
+        // Local React state update (admin panel ke liye)
+        setHistory(prev => [...prev, entry]);
+
+        // ── 3. WHATSAPP CONFIRMATION ──────────────────────────────────
         const customerMsg = `✅ *Booking Confirmed – Turf 28!*\n\nHi ${confirmed.name}! Your slot is confirmed.\n\n🏟️ *Turf 28 Sports Arena*\n🏷️ Sport: ${confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football"}\n📅 Date: ${getDayName(confirmed.date)}\n⏰ Time: ${confirmed.slot.split("–")[0].trim()} → ${endTime}\n⌛ Duration: ${confirmed.hours||1} hour(s)\n💰 Amount Paid: ₹${totalAmt}\n🆔 Payment ID: ${response.razorpay_payment_id}\n\n📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura\n📞 For queries: +91 8552893927\n\n_See you on the field!_ 🎉`;
         window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
 
-        // ── EMAIL CONFIRMATION via EmailJS ──────────────────────────
-        // Yeh variables aapke EmailJS template ke variables se match hone chahiye
-        const emailParams = {
-          email:      confirmed.email || "",          // customer email (agar aapne form mein add kiya ho)
-          to_email:   confirmed.email || "",          // EmailJS "To Email" field: {{to_email}}
-          order_id:   response.razorpay_payment_id,   // {{order_id}}
-          name:       confirmed.name,                 // {{name}}
-          sport:      confirmed.sport === "cricket" ? "🏏 Cricket Turf" : "⚽ Football Turf",
-          date:       getDayName(confirmed.date),
-          slot:       confirmed.slot,
-          end_time:   endTime,
-          duration:   (confirmed.hours || 1) + " hour(s)",
-          amount:     "₹" + totalAmt,
-          phone:      confirmed.phone,
-          payment_id: response.razorpay_payment_id,
-        };
-
-        if (confirmed.email && window.EMAILJS_PUBLIC_KEY !== "YOUR_PUBLIC_KEY") {
-          emailjs.send(window.EMAILJS_SERVICE_ID, window.EMAILJS_TEMPLATE_ID, emailParams)
-            .then(() => console.log("✅ Booking email sent!"))
-            .catch(err => console.warn("⚠️ Email failed:", err));
+        // ── 4. EMAIL CONFIRMATION via EmailJS ─────────────────────────
+        const customerEmail = (confirmed.email || "").trim();
+        if (customerEmail) {
+          const emailParams = {
+            email:      customerEmail,
+            to_email:   customerEmail,
+            order_id:   response.razorpay_payment_id,
+            name:       confirmed.name,
+            sport:      confirmed.sport === "cricket" ? "Cricket Turf" : "Football Turf",
+            date:       getDayName(confirmed.date),
+            slot:       confirmed.slot,
+            end_time:   endTime,
+            duration:   (confirmed.hours || 1) + " hour(s)",
+            amount:     "Rs. " + totalAmt,
+            phone:      confirmed.phone,
+            payment_id: response.razorpay_payment_id,
+          };
+          emailjs.send(
+            window.EMAILJS_SERVICE_ID,
+            window.EMAILJS_TEMPLATE_ID,
+            emailParams
+          )
+          .then(() => console.log("✅ Email sent to", customerEmail))
+          .catch(err => console.warn("⚠️ EmailJS error:", JSON.stringify(err)));
         }
-        // ────────────────────────────────────────────────────────────
+        // ─────────────────────────────────────────────────────────────
 
         setStep(5);
       },
