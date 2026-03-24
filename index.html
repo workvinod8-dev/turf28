@@ -24,6 +24,21 @@
 </script>
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  // ─── EMAILJS CONFIG ───────────────────────────────────────────────
+  // Step 1: EmailJS > Account > API Keys se PUBLIC KEY copy karo
+  // Step 2: Email Services tab mein SERVICE ID copy karo
+  // Step 3: Email Templates tab mein apni template ka TEMPLATE ID copy karo
+  const EMAILJS_PUBLIC_KEY  = "ToZA8IUzWW7ve-J8W";   // ← yahan apni key daalo
+  const EMAILJS_SERVICE_ID  = "service_9dqw9sn";   // ← e.g. "service_abc123"
+  const EMAILJS_TEMPLATE_ID = "template_rdbxx58";  // ← e.g. "template_xyz789"
+  // ──────────────────────────────────────────────────────────────────
+  window.EMAILJS_PUBLIC_KEY  = EMAILJS_PUBLIC_KEY;
+  window.EMAILJS_SERVICE_ID  = EMAILJS_SERVICE_ID;
+  window.EMAILJS_TEMPLATE_ID = EMAILJS_TEMPLATE_ID;
+  (function(){ emailjs.init({ publicKey: EMAILJS_PUBLIC_KEY }); })();
+</script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
@@ -628,7 +643,7 @@ function App() {
   const [bookings, setBookings] = useState(loadBookings);
   const [history, setHistory] = useState(loadHistory);
   const [booking, setBooking] = useState({ sport:null, date:getToday(), slot:null, hours:1 });
-  const [form, setForm] = useState({ name:"", phone:"", players:"" });
+  const [form, setForm] = useState({ name:"", phone:"", players:"", email:"" });
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(1);
   const [confirmed, setConfirmed] = useState(null);
@@ -719,7 +734,7 @@ function App() {
 
   const goBook = (sport) => {
     setBooking({ sport, date:getToday(), slot:null, hours:1 });
-    setStep(1); setForm({ name:"",phone:"",players:"" }); setConfirmed(null);
+    setStep(1); setForm({ name:"",phone:"",players:"",email:"" }); setConfirmed(null);
     setPage("booking"); window.scrollTo(0,0);
   };
 
@@ -782,6 +797,31 @@ function App() {
         const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
         const customerMsg = `✅ *Booking Confirmed – Turf 28!*\n\nHi ${confirmed.name}! Your slot is confirmed.\n\n🏟️ *Turf 28 Sports Arena*\n🏷️ Sport: ${confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football"}\n📅 Date: ${getDayName(confirmed.date)}\n⏰ Time: ${confirmed.slot.split("–")[0].trim()} → ${endTime}\n⌛ Duration: ${confirmed.hours||1} hour(s)\n💰 Amount Paid: ₹${totalAmt}\n🆔 Payment ID: ${response.razorpay_payment_id}\n\n📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura\n📞 For queries: +91 8552893927\n\n_See you on the field!_ 🎉`;
         window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
+
+        // ── EMAIL CONFIRMATION via EmailJS ──────────────────────────
+        // Yeh variables aapke EmailJS template ke variables se match hone chahiye
+        const emailParams = {
+          email:      confirmed.email || "",          // customer email (agar aapne form mein add kiya ho)
+          to_email:   confirmed.email || "",          // EmailJS "To Email" field: {{to_email}}
+          order_id:   response.razorpay_payment_id,   // {{order_id}}
+          name:       confirmed.name,                 // {{name}}
+          sport:      confirmed.sport === "cricket" ? "🏏 Cricket Turf" : "⚽ Football Turf",
+          date:       getDayName(confirmed.date),
+          slot:       confirmed.slot,
+          end_time:   endTime,
+          duration:   (confirmed.hours || 1) + " hour(s)",
+          amount:     "₹" + totalAmt,
+          phone:      confirmed.phone,
+          payment_id: response.razorpay_payment_id,
+        };
+
+        if (confirmed.email && window.EMAILJS_PUBLIC_KEY !== "YOUR_PUBLIC_KEY") {
+          emailjs.send(window.EMAILJS_SERVICE_ID, window.EMAILJS_TEMPLATE_ID, emailParams)
+            .then(() => console.log("✅ Booking email sent!"))
+            .catch(err => console.warn("⚠️ Email failed:", err));
+        }
+        // ────────────────────────────────────────────────────────────
+
         setStep(5);
       },
       prefill: {
@@ -1443,6 +1483,11 @@ function App() {
                   {errors.phone && <div style={{ fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600 }}>⚠ {errors.phone}</div>}
                 </div>
                 <div>
+                  <label className="lbl">Email Address <span style={{ color:"#9CA3AF",fontWeight:400 }}>(for booking confirmation)</span></label>
+                  <input className="inp" placeholder="yourname@gmail.com" value={form.email||""} type="email"
+                    onChange={e=>setForm(p=>({...p,email:e.target.value}))}/>
+                </div>
+                <div>
                   <label className="lbl">No. of Players</label>
                   <input className="inp" placeholder="e.g. 11" value={form.players}
                     onChange={e=>setForm(p=>({...p,players:e.target.value}))} style={{ maxWidth:160 }}/>
@@ -1547,7 +1592,7 @@ function App() {
                 <a href={CALL} className="btn bcl"><CALL_ICON/> +91 {PHONE}</a>
               </div>
               <div style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap" }}>
-                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1});setForm({name:"",phone:"",players:""});setConfirmed(null);}}>Book Another</button>
+                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1});setForm({name:"",phone:"",players:"",email:""});setConfirmed(null);}}>Book Another</button>
                 <button className="btn bou" onClick={()=>{setPage("home");window.scrollTo(0,0);}}>← Home</button>
               </div>
             </div>
