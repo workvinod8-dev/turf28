@@ -780,34 +780,7 @@ function App() {
         setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
         // Send WhatsApp confirmation to CUSTOMER
         const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
-        const customerMsg =
-          "✅ *Booking Confirmed – Turf 28!*
-
-" +
-          "Hi " + confirmed.name + "! Your slot is confirmed.
-
-" +
-          "🏟️ *Turf 28 Sports Arena*
-" +
-          "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "
-" +
-          "📅 Date: " + getDayName(confirmed.date) + "
-" +
-          "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "
-" +
-          "⌛ Duration: " + (confirmed.hours||1) + " hour(s)
-" +
-          "💰 Amount Paid: ₹" + totalAmt + "
-" +
-          "🆔 Payment ID: " + response.razorpay_payment_id + "
-
-" +
-          "📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura
-" +
-          "📞 For queries: +91 8552893927
-
-" +
-          "_See you on the field!_ 🎉";
+        const customerMsg = `✅ *Booking Confirmed – Turf 28!*\n\nHi ${confirmed.name}! Your slot is confirmed.\n\n🏟️ *Turf 28 Sports Arena*\n🏷️ Sport: ${confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football"}\n📅 Date: ${getDayName(confirmed.date)}\n⏰ Time: ${confirmed.slot.split("–")[0].trim()} → ${endTime}\n⌛ Duration: ${confirmed.hours||1} hour(s)\n💰 Amount Paid: ₹${totalAmt}\n🆔 Payment ID: ${response.razorpay_payment_id}\n\n📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura\n📞 For queries: +91 8552893927\n\n_See you on the field!_ 🎉`;
         window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
         setStep(5);
       },
