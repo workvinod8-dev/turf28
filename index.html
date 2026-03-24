@@ -147,6 +147,7 @@ for (let h = 5; h < 23; h++) {
 
 function formatDate(d) { return d.toISOString().split("T")[0]; }
 function isSunday(ds) { return new Date(ds).getDay() === 0; }
+function isWeekend(ds) { const d = new Date(ds).getDay(); return d === 0 || d === 6; }
 function getDayName(ds) {
   const d = new Date(ds);
   const dd = String(d.getDate()).padStart(2,"0");
@@ -165,8 +166,8 @@ function getSlotHour(s) {
 }
 function getSlotPrice(slot, date) {
   const h = getSlotHour(slot);
-  const sun = isSunday(date);
-  return h < 17 ? (sun ? 600 : 500) : (sun ? 900 : 700);
+  const weekend = isWeekend(date); // Saturday or Sunday
+  return h < 17 ? (weekend ? 600 : 500) : (weekend ? 800 : 700);
 }
 
 // Always compute fresh — never stale even if page is open overnight
@@ -229,7 +230,7 @@ function PricingCard({ sport, icon, isGreen, onBook }) {
       <div style={{ fontSize:12,color:"#6B7280",marginBottom:20 }}>Per hour · Pay at venue</div>
 
       <div style={{ marginBottom:14 }}>
-        <div style={{ fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#6B7280",marginBottom:8 }}>Mon – Sat</div>
+        <div style={{ fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#6B7280",marginBottom:8 }}>Mon – Fri</div>
         <div style={{ display:"flex",gap:10 }}>
           <div className="pill" style={{ background:dim,border:`1px solid ${bdr}` }}>
             <div style={{ fontSize:9,color:col,fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 AM – 5 PM</div>
@@ -245,11 +246,11 @@ function PricingCard({ sport, icon, isGreen, onBook }) {
       </div>
 
       <div style={{ marginBottom:22 }}>
-        <div style={{ fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#6B7280",marginBottom:8 }}>Sunday</div>
+        <div style={{ fontSize:10,fontWeight:700,letterSpacing:2,textTransform:"uppercase",color:"#6B7280",marginBottom:8 }}>Sat – Sun</div>
         <div style={{ display:"flex",gap:10 }}>
           <div className="pill" style={{ background:dim,border:`1px solid ${bdr}` }}>
             <div style={{ fontSize:9,color:col,fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 AM – 5 PM</div>
-            <div className="bb" style={{ fontSize:34,color:col,lineHeight:1 }}>₹500</div>
+            <div className="bb" style={{ fontSize:34,color:col,lineHeight:1 }}>₹600</div>
             <div style={{ fontSize:10,color:"#9CA3AF" }}>/hr</div>
           </div>
           <div className="pill" style={{ background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)" }}>
@@ -1124,7 +1125,7 @@ function App() {
                 <span style={{ fontSize:18 }}>☀️</span>
                 <div>
                   <div style={{ fontWeight:700,fontSize:13,color:"#15803D" }}>5 AM – 5 PM (Day)</div>
-                  <div style={{ fontSize:12,color:"#6B7280" }}>Mon–Sat ₹500 · Sunday ₹600 per hour</div>
+                  <div style={{ fontSize:12,color:"#6B7280" }}>Mon–Fri ₹500 · Sat–Sun ₹600 per hour</div>
                 </div>
               </div>
               <div style={{ width:1,background:"#BBF7D0",height:36 }}/>
@@ -1132,7 +1133,7 @@ function App() {
                 <span style={{ fontSize:18 }}>🌙</span>
                 <div>
                   <div style={{ fontWeight:700,fontSize:13,color:"#D97706" }}>5 PM – 11 PM (Evening)</div>
-                  <div style={{ fontSize:12,color:"#6B7280" }}>Mon–Sat ₹700 · Sunday ₹900 per hour</div>
+                  <div style={{ fontSize:12,color:"#6B7280" }}>Mon–Fri ₹700 · Sat–Sun ₹800 per hour</div>
                 </div>
               </div>
             </div>
@@ -1273,8 +1274,8 @@ function App() {
                 {booking.date && (
                   <div style={{ marginTop:8,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center" }}>
                     <span style={{ fontSize:12,color:"#6B7280" }}>{getDayName(booking.date)}</span>
-                    <span style={{ fontSize:11,padding:"2px 10px",borderRadius:12,background:isSunday(booking.date)?"rgba(217,119,6,0.08)":"rgba(21,128,61,0.08)",color:isSunday(booking.date)?"#D97706":"#15803D",fontWeight:700 }}>
-                      {isSunday(booking.date)?"Sunday Rates":"Weekday Rates"}
+                    <span style={{ fontSize:11,padding:"2px 10px",borderRadius:12,background:isWeekend(booking.date)?"rgba(217,119,6,0.08)":"rgba(21,128,61,0.08)",color:isWeekend(booking.date)?"#D97706":"#15803D",fontWeight:700 }}>
+                      {isWeekend(booking.date)?"Weekend Rates (Sat-Sun)":"Weekday Rates (Mon-Fri)"}
                     </span>
                   </div>
                 )}
@@ -1306,8 +1307,8 @@ function App() {
                   <span style={{ fontSize:11,color:"#6B7280" }}>{avail.length}/{ALL_SLOTS.length} free</span>
                 </div>
                 <div style={{ display:"flex",gap:10,marginBottom:12,flexWrap:"wrap" }}>
-                  <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day ₹{isSunday(booking.date)?600:500}/hr</span>
-                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening ₹{isSunday(booking.date)?900:700}/hr</span>
+                  <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day ₹{isWeekend(booking.date)?600:500}/hr</span>
+                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening ₹{isWeekend(booking.date)?800:700}/hr</span>
                 </div>
 
                 {avail.length===0 ? (
