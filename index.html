@@ -738,7 +738,7 @@ function App() {
 
   const goBook = (sport) => {
     setBooking({ sport, date:getToday(), slot:null, hours:1 });
-    setStep(1); setForm({ name:"",phone:"",players:"",email:"" }); setConfirmed(null);
+    setStep(1); setForm({ name:"",phone:"",players:"",email:"",coupon:"" }); setConfirmed(null);
     setPage("booking"); window.scrollTo(0,0);
   };
 
@@ -748,6 +748,8 @@ function App() {
     else if (form.name.trim().length < 2) errs.name = "Enter a valid name";
     if (!form.phone.trim()) errs.phone = "Phone number is required";
     else if (!/^[6-9]\d{9}$/.test(form.phone.trim())) errs.phone = "Enter valid 10-digit mobile number";
+    if (!form.email.trim()) errs.email = "Email is required";
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) errs.email = "Enter a valid email address";
     return errs;
   };
 
@@ -1595,15 +1597,13 @@ function App() {
                   {errors.phone && <div style={{ fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600 }}>⚠ {errors.phone}</div>}
                 </div>
                 <div>
-                  <label className="lbl">Email Address <span style={{ color:"#9CA3AF",fontWeight:400 }}>(for booking confirmation)</span></label>
+                  <label className="lbl">Email Address *</label>
                   <input className="inp" placeholder="yourname@gmail.com" value={form.email||""} type="email"
-                    onChange={e=>setForm(p=>({...p,email:e.target.value}))}/>
+                    onChange={e=>{setForm(p=>({...p,email:e.target.value}));setErrors(p=>({...p,email:""}))}}
+                    style={{ borderColor: errors.email?"#ef4444":"" }}/>
+                  {errors.email && <div style={{ fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600 }}>⚠ {errors.email}</div>}
                 </div>
-                <div>
-                  <label className="lbl">No. of Players</label>
-                  <input className="inp" placeholder="e.g. 11" value={form.players}
-                    onChange={e=>setForm(p=>({...p,players:e.target.value}))} style={{ maxWidth:160 }}/>
-                </div>
+
 
                 {/* Coupon Code */}
                 <div>
@@ -1633,7 +1633,7 @@ function App() {
               </div>
               <div style={{ display:"flex",gap:10 }}>
                 <button className="btn bou" onClick={()=>setStep(2)}>← Back</button>
-                <button className="btn bg" disabled={!form.name||!form.phone} onClick={handleConfirm}>Confirm Booking →</button>
+                <button className="btn bg" disabled={!form.name||!form.phone||!form.email} onClick={handleConfirm}>Confirm Booking →</button>
               </div>
             </div>
           )}
