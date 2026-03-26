@@ -831,14 +831,11 @@ function App() {
           status:        "Paid"
         };
 
-        // Firebase push — yahi asli save hai
+        // Firebase push — yahi asli save hai (Firebase listener khud setHistory update karega)
         db.ref("bookingHistory").push(entry, err => {
           if (err) console.warn("❌ bookingHistory push failed:", err);
           else console.log("✅ Booking saved to Firebase bookingHistory!");
         });
-
-        // Local React state update (admin panel ke liye)
-        setHistory(prev => [...prev, entry]);
 
         // ── 3. WHATSAPP CONFIRMATION ──────────────────────────────────
         const customerMsg = `✅ *Booking Confirmed – Turf 28!*\n\nHi ${confirmed.name}! Your slot is confirmed.\n\n🏟️ *Turf 28 Sports Arena*\n🏷️ Sport: ${confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football"}\n📅 Date: ${getDayName(confirmed.date)}\n⏰ Time: ${confirmed.slot.split("–")[0].trim()} → ${endTime}\n⌛ Duration: ${confirmed.hours||1} hour(s)\n💰 Amount Paid: ₹${totalAmt}\n🆔 Payment ID: ${response.razorpay_payment_id}\n\n📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura\n📞 For queries: +91 8552893927\n\n_See you on the field!_ 🎉`;
@@ -1597,6 +1594,10 @@ function App() {
                   {errors.phone && <div style={{ fontSize:11,color:"#ef4444",marginTop:5,fontWeight:600 }}>⚠ {errors.phone}</div>}
                 </div>
                 <div>
+                  <div style={{ background:"rgba(21,128,61,0.06)",border:"1px solid rgba(21,128,61,0.2)",borderRadius:8,padding:"10px 14px",marginBottom:10,display:"flex",alignItems:"flex-start",gap:8 }}>
+                    <span style={{ fontSize:16,marginTop:1 }}>📧</span>
+                    <p style={{ fontSize:12,color:"#374151",lineHeight:1.6,margin:0 }}>Booking confirmation details will be sent to your email after payment.</p>
+                  </div>
                   <label className="lbl">Email Address *</label>
                   <input className="inp" placeholder="yourname@gmail.com" value={form.email||""} type="email"
                     onChange={e=>{setForm(p=>({...p,email:e.target.value}));setErrors(p=>({...p,email:""}))}}
