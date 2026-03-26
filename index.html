@@ -926,28 +926,25 @@ function App() {
     // WhatsApp confirmation to customer
     const totalAmt = 0;
     const customerMsg =
-      "✅ *Booking Confirmed – Turf 28!*
-
+      "✅ *Booking Confirmed – Turf 28!*\n
 " +
-      "Hi " + confirmed.name + "! Your slot is confirmed (Coupon Applied).
-
+      "Hi " + confirmed.name + "! Your slot is confirmed (Coupon Applied).\n
 " +
-      "🏟️ *Turf 28 Sports Arena*
+      "🏟️ *Turf 28 Sports Arena*\n
 " +
-      "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "
+      "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "\n
 " +
-      "📅 Date: " + getDayName(confirmed.date) + "
+      "📅 Date: " + getDayName(confirmed.date) + "\n
 " +
-      "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "
+      "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "\n
 " +
-      "⌛ Duration: " + (confirmed.hours||1) + " hour(s)
+      "⌛ Duration: " + (confirmed.hours||1) + " hour(s)\n
 " +
-      "💰 Amount: ₹0 (FREE - Coupon Applied)
+      "💰 Amount: ₹0 (FREE - Coupon Applied)\n
 " +
-      "📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura
+      "📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura\n
 " +
-      "📞 For queries: +91 8552893927
-
+      "📞 For queries: +91 8552893927\n
 " +
       "_See you on the field!_ 🎉";
     window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
