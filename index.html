@@ -318,10 +318,12 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
 
   const getStatus = (b) => statusMap[b.bookedAt] || b.status || "Pending Confirmation";
   const statusColors = {
-    "Pending Confirmation": { bg:"#FEF9C3", border:"#FDE047", text:"#854D0E" },
-    "Confirmed": { bg:"#DCFCE7", border:"#86EFAC", text:"#15803D" },
-    "Cancelled": { bg:"#FEE2E2", border:"#FECACA", text:"#DC2626" },
-    "Completed": { bg:"#DBEAFE", border:"#93C5FD", text:"#1D4ED8" },
+    "Pending Confirmation": { bg:"#FEF9C3", border:"#FDE047", bdr:"#FDE047", text:"#854D0E" },
+    "Confirmed":            { bg:"#DCFCE7", border:"#86EFAC", bdr:"#86EFAC", text:"#15803D" },
+    "Paid":                 { bg:"#DCFCE7", border:"#86EFAC", bdr:"#86EFAC", text:"#15803D" },
+    "Cancelled":            { bg:"#FEE2E2", border:"#FECACA", bdr:"#FECACA", text:"#DC2626" },
+    "Completed":            { bg:"#DBEAFE", border:"#93C5FD", bdr:"#93C5FD", text:"#1D4ED8" },
+    "Free (Coupon)":        { bg:"#F3E8FF", border:"#C084FC", bdr:"#C084FC", text:"#7C3AED" },
   };
 
   const getDuration = (b) => {
@@ -419,7 +421,7 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
               No bookings found
             </div>
           ) : (
-            <div style={{ display:"flex",flexDirection:"column",gap:10,maxHeight:420,overflowY:"auto",paddingRight:2 }}>
+            <div style={{ display:"flex",flexDirection:"column",gap:10,maxHeight:500,overflowY:"auto",paddingRight:4 }}>
               {[...filteredHistory].reverse().map((b,i)=>{
                 const isOpen = expandedCard===i;
                 const status = getStatus(b);
@@ -435,7 +437,7 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
                           <span className="bb" style={{ fontSize:15,color:b.sport==="cricket"?"#15803D":"#D97706" }}>
                             {b.sport==="cricket"?"🏏 Cricket":"⚽ Football"}
                           </span>
-                          <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,background:sc.bg,border:"1px solid "+sc.bdr,color:sc.text,fontWeight:700 }}>
+                          <span style={{ fontSize:10,padding:"2px 8px",borderRadius:20,background:sc.bg,border:"1px solid "+(sc.border||sc.bdr||"#BBF7D0"),color:sc.text,fontWeight:700 }}>
                             {status}
                           </span>
                         </div>
@@ -643,7 +645,9 @@ function App() {
   const [bookings, setBookings] = useState(loadBookings);
   const [history, setHistory] = useState(loadHistory);
   const [booking, setBooking] = useState({ sport:null, date:getToday(), slot:null, hours:1 });
-  const [form, setForm] = useState({ name:"", phone:"", players:"", email:"" });
+  const [form, setForm] = useState({ name:"", phone:"", players:"", email:"", coupon:"" });
+  const [couponStatus, setCouponStatus] = useState(null);
+  const OWNER_COUPON = "TURF28FREE";
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(1);
   const [confirmed, setConfirmed] = useState(null);
@@ -745,6 +749,13 @@ function App() {
     if (!form.phone.trim()) errs.phone = "Phone number is required";
     else if (!/^[6-9]\d{9}$/.test(form.phone.trim())) errs.phone = "Enter valid 10-digit mobile number";
     return errs;
+  };
+
+  const isCouponValid = () => form.coupon.trim().toUpperCase() === OWNER_COUPON;
+
+  const getFinalAmount = () => {
+    if (isCouponValid()) return 0;
+    return slotPrice || 0;
   };
 
   const handleConfirm = () => {
@@ -883,6 +894,65 @@ function App() {
 
   // Not used anymore - kept for reference
   const handlePaymentDone = () => { setStep(5); };
+
+  const handleFreeBooking = () => {
+    const { sport, date, selectedSlots, slot } = confirmed;
+    const slotsToBlock = selectedSlots || [slot];
+    // Block slots
+    setBookings(prev => {
+      const u = {...prev};
+      if (!u[date]) u[date] = { cricket:[], football:[] };
+      const existing = u[date][sport] || [];
+      u[date] = { ...u[date], [sport]: [...new Set([...existing, ...slotsToBlock])] };
+      saveBookings(u);
+      return u;
+    });
+    // Save to history with Free status
+    const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
+    const entry = {
+      sport: confirmed.sport,
+      date: confirmed.date,
+      slot: confirmed.slot,
+      name: confirmed.name,
+      phone: confirmed.phone,
+      players: confirmed.players || "-",
+      amount: 0,
+      hours: confirmed.hours || 1,
+      paymentId: "COUPON-" + OWNER_COUPON,
+      bookedAt: new Date().toLocaleString("en-IN"),
+      status: "Free (Coupon)"
+    };
+    setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
+    // WhatsApp confirmation to customer
+    const totalAmt = 0;
+    const customerMsg =
+      "✅ *Booking Confirmed – Turf 28!*
+
+" +
+      "Hi " + confirmed.name + "! Your slot is confirmed (Coupon Applied).
+
+" +
+      "🏟️ *Turf 28 Sports Arena*
+" +
+      "🏷️ Sport: " + (confirmed.sport==="cricket"?"🏏 Cricket":"⚽ Football") + "
+" +
+      "📅 Date: " + getDayName(confirmed.date) + "
+" +
+      "⏰ Time: " + confirmed.slot.split("–")[0].trim() + " → " + endTime + "
+" +
+      "⌛ Duration: " + (confirmed.hours||1) + " hour(s)
+" +
+      "💰 Amount: ₹0 (FREE - Coupon Applied)
+" +
+      "📍 Behind Mushq Hotel, Al-Ameen Medical College Road, Vijayapura
+" +
+      "📞 For queries: +91 8552893927
+
+" +
+      "_See you on the field!_ 🎉";
+    window.open("https://wa.me/91" + confirmed.phone.replace(/\D/g,"") + "?text=" + encodeURIComponent(customerMsg), "_blank");
+    setStep(5);
+  };
 
   const releaseSlot = (sport, date, slot) => {
     // Update local state immediately - release from BOTH sports (1 turf only)
@@ -1547,6 +1617,32 @@ function App() {
                   <input className="inp" placeholder="e.g. 11" value={form.players}
                     onChange={e=>setForm(p=>({...p,players:e.target.value}))} style={{ maxWidth:160 }}/>
                 </div>
+
+                {/* Coupon Code */}
+                <div>
+                  <label className="lbl">Coupon Code <span style={{ color:"#9CA3AF",fontWeight:400,letterSpacing:0,textTransform:"none",fontSize:10 }}>(optional)</span></label>
+                  <div style={{ display:"flex",gap:8,alignItems:"center" }}>
+                    <input className="inp" placeholder="Enter coupon code"
+                      value={form.coupon}
+                      onChange={e=>{ setForm(p=>({...p,coupon:e.target.value})); setCouponStatus(null); }}
+                      style={{ maxWidth:220, textTransform:"uppercase", fontWeight:700, letterSpacing:2 }}/>
+                    <button type="button"
+                      onClick={()=>{ if(form.coupon.trim().toUpperCase()==="TURF28FREE"){ setCouponStatus("valid"); } else { setCouponStatus("invalid"); } }}
+                      style={{ padding:"11px 16px",background:"#15803D",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:14,letterSpacing:1,cursor:"pointer",flexShrink:0 }}>
+                      Apply
+                    </button>
+                  </div>
+                  {couponStatus==="valid" && (
+                    <div style={{ marginTop:6,fontSize:12,color:"#15803D",fontWeight:700,display:"flex",alignItems:"center",gap:5 }}>
+                      ✅ Coupon applied! <span style={{ color:"#D97706" }}>Amount = ₹0 (Free)</span>
+                    </div>
+                  )}
+                  {couponStatus==="invalid" && (
+                    <div style={{ marginTop:6,fontSize:12,color:"#DC2626",fontWeight:700 }}>
+                      ❌ Invalid coupon code
+                    </div>
+                  )}
+                </div>
               </div>
               <div style={{ display:"flex",gap:10 }}>
                 <button className="btn bou" onClick={()=>setStep(2)}>← Back</button>
@@ -1580,7 +1676,9 @@ function App() {
                 ))}
                 <div className="cr" style={{ borderBottom:"none" }}>
                   <span style={{ color:"#6B7280",fontSize:12,fontWeight:600 }}>Total Amount</span>
-                  <span className="bb" style={{ color:"#D97706",fontSize:24 }}>₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)}</span>
+                  <span className="bb" style={{ color: isCouponValid()?"#7C3AED":"#D97706",fontSize:24 }}>
+                    {isCouponValid() ? "₹0 (FREE 🎟️)" : "₹"+(getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1))}
+                  </span>
                 </div>
               </div>
 
@@ -1595,17 +1693,27 @@ function App() {
                     <span key={m} style={{ padding:"4px 10px",background:"#fff",border:"1px solid #BBF7D0",borderRadius:6,fontSize:11,color:"#374151",fontWeight:600 }}>{m}</span>
                   ))}
                 </div>
-                <button
-                  onClick={handleRazorpayPayment}
-                  style={{ width:"100%",padding:"16px",background:"#15803D",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:2,cursor:"pointer",transition:"all .2s" }}
-                  onMouseEnter={e=>e.currentTarget.style.background="#166534"}
-                  onMouseLeave={e=>e.currentTarget.style.background="#15803D"}>
-                  💳 PAY ₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)} & CONFIRM SLOT
-                </button>
+                {isCouponValid() ? (
+                  <button
+                    onClick={handleFreeBooking}
+                    style={{ width:"100%",padding:"16px",background:"#7C3AED",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:2,cursor:"pointer",transition:"all .2s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="#6D28D9"}
+                    onMouseLeave={e=>e.currentTarget.style.background="#7C3AED"}>
+                    🎟️ CONFIRM FREE BOOKING (COUPON APPLIED)
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRazorpayPayment}
+                    style={{ width:"100%",padding:"16px",background:"#15803D",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:2,cursor:"pointer",transition:"all .2s" }}
+                    onMouseEnter={e=>e.currentTarget.style.background="#166534"}
+                    onMouseLeave={e=>e.currentTarget.style.background="#15803D"}>
+                    💳 PAY ₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)} & CONFIRM SLOT
+                  </button>
+                )}
               </div>
 
               <div style={{ background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:9,padding:"12px 16px",marginBottom:16 }}>
-                <p style={{ fontSize:12,color:"#92400E" }}>⚠️ Slot will be booked <strong>only after successful payment</strong>. You will receive a WhatsApp confirmation on your number.</p>
+                <p style={{ fontSize:12,color:isCouponValid()?"#7C3AED":"#92400E" }}>{isCouponValid() ? "🎟️ Coupon applied — this booking is FREE! Click confirm to lock your slot." : "⚠️ Slot will be booked only after successful payment. WhatsApp confirmation will be sent."}</p>
               </div>
 
               <button className="btn bou" style={{ width:"100%",fontSize:15,padding:"12px" }} onClick={()=>setStep(3)}>
@@ -1647,7 +1755,7 @@ function App() {
                 <a href={CALL} className="btn bcl"><CALL_ICON/> +91 {PHONE}</a>
               </div>
               <div style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap" }}>
-                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1});setForm({name:"",phone:"",players:"",email:""});setConfirmed(null);}}>Book Another</button>
+                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1}); setCouponStatus(null);;setForm({name:"",phone:"",players:"",email:""});setConfirmed(null);}}>Book Another</button>
                 <button className="btn bou" onClick={()=>{setPage("home");window.scrollTo(0,0);}}>← Home</button>
               </div>
             </div>
@@ -1657,7 +1765,7 @@ function App() {
       {/* ── ADMIN PANEL MODAL ── */}
       {adminOpen && (
         <div style={{ position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20 }}>
-          <div style={{ background:"#ffffff",border:"1px solid #BBF7D0",borderRadius:16,padding:"28px 24px",width:"100%",maxWidth:500,maxHeight:"85vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)" }}>
+          <div style={{ background:"#ffffff",border:"1px solid #BBF7D0",borderRadius:16,padding:"24px 20px",width:"100%",maxWidth:680,maxHeight:"92vh",overflowY:"auto",boxShadow:"0 20px 60px rgba(0,0,0,0.15)" }}>
 
             {!adminAuth ? (
               /* PIN Screen */
