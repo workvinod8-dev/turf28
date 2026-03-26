@@ -333,6 +333,7 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
   };
 
   const getTotalAmount = (b) => {
+    if (b.status === "Free (Coupon)") return 0;
     if (b.hours && b.slot && b.date) return getSlotPrice(b.slot, b.date) * b.hours;
     return b.amount || 0;
   };
@@ -423,14 +424,15 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
           ) : (
             <div style={{ display:"flex",flexDirection:"column",gap:10,maxHeight:460,overflowY:"auto",paddingRight:6,paddingBottom:4 }}>
               {[...filteredHistory].reverse().map((b,i)=>{
-                const isOpen = expandedCard===i;
+                const cardKey = b.bookedAt ? b.bookedAt + (b.phone||"") : String(i);
+                const isOpen = expandedCard===cardKey;
                 const status = getStatus(b);
                 const sc = statusColors[status] || statusColors["Pending Confirmation"];
                 const totalAmt = getTotalAmount(b);
                 return (
-                  <div key={i} style={{ background:"#fff",border:"1.5px solid #BBF7D0",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)" }}>
+                  <div key={cardKey} style={{ background:"#fff",border:"1.5px solid #BBF7D0",borderRadius:12,overflow:"hidden",boxShadow:"0 1px 6px rgba(0,0,0,0.04)" }}>
                     {/* Card Header — always visible */}
-                    <div onClick={()=>setExpandedCard(isOpen?null:i)}
+                    <div onClick={()=>setExpandedCard(isOpen?null:cardKey)}
                       style={{ padding:"12px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"flex-start" }}>
                       <div style={{ flex:1,minWidth:0,overflow:"hidden" }}>
                         <div style={{ display:"flex",alignItems:"center",gap:6,marginBottom:4,flexWrap:"wrap" }}>
@@ -897,33 +899,57 @@ function App() {
   const handleFreeBooking = () => {
     const { sport, date, selectedSlots, slot } = confirmed;
     const slotsToBlock = selectedSlots || [slot];
-    // Block slots
+    const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
+
+    // ── 1. SLOTS BLOCK — same atomic pattern as Razorpay (both sports, Firebase first) ──
+    db.ref("bookedSlots").once("value", snap => {
+      const current = snap.val() || {};
+      if (!current[date]) current[date] = { cricket: [], football: [] };
+      ["cricket", "football"].forEach(sp => {
+        const existing = current[date][sp] || [];
+        current[date][sp] = [...new Set([...existing, ...slotsToBlock])];
+      });
+      db.ref("bookedSlots").set(current, err => {
+        if (err) console.warn("❌ bookedSlots write failed:", err);
+      });
+    });
+
+    // Update local bookings state immediately
     setBookings(prev => {
-      const u = {...prev};
-      if (!u[date]) u[date] = { cricket:[], football:[] };
-      const existing = u[date][sport] || [];
-      u[date] = { ...u[date], [sport]: [...new Set([...existing, ...slotsToBlock])] };
-      saveBookings(u);
+      const u = JSON.parse(JSON.stringify(prev || {}));
+      if (!u[date]) u[date] = { cricket: [], football: [] };
+      ["cricket", "football"].forEach(sp => {
+        const existing = u[date][sp] || [];
+        u[date][sp] = [...new Set([...existing, ...slotsToBlock])];
+      });
       return u;
     });
-    // Save to history with Free status
-    const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
+
+    // ── 2. BOOKING HISTORY — Firebase mein push karo (same as Razorpay) ──
     const entry = {
-      sport: confirmed.sport,
-      date: confirmed.date,
-      slot: confirmed.slot,
-      name: confirmed.name,
-      phone: confirmed.phone,
-      players: confirmed.players || "-",
-      amount: 0,
-      hours: confirmed.hours || 1,
-      paymentId: "COUPON-" + OWNER_COUPON,
-      bookedAt: new Date().toLocaleString("en-IN"),
-      status: "Free (Coupon)"
+      sport:         confirmed.sport,
+      date:          confirmed.date,
+      slot:          confirmed.slot,
+      selectedSlots: slotsToBlock,
+      endTime:       endTime,
+      name:          confirmed.name,
+      phone:         confirmed.phone,
+      email:         confirmed.email || "",
+      players:       confirmed.players || "-",
+      amount:        0,
+      hours:         confirmed.hours || 1,
+      paymentId:     "COUPON-" + OWNER_COUPON,
+      bookedAt:      new Date().toLocaleString("en-IN"),
+      status:        "Free (Coupon)"
     };
-    setHistory(prev => { const h=[...prev,entry]; saveHistory(h); return h; });
-    // WhatsApp confirmation to customer
-    const totalAmt = 0;
+
+    // Firebase push — Firebase listener setHistory update karega automatically
+    db.ref("bookingHistory").push(entry, err => {
+      if (err) console.warn("❌ bookingHistory push failed:", err);
+      else console.log("✅ Coupon booking saved to Firebase!");
+    });
+
+    // ── 3. WHATSAPP CONFIRMATION ──
     const customerMsg =
       "✅ *Booking Confirmed – Turf 28!*\n\n" +
       "Hi " + confirmed.name + "! Your slot is confirmed (Coupon Applied).\n\n" +
