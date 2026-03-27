@@ -7,34 +7,53 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
-<script>
-  // ⚠️ SECURITY: Firebase config moved to server-side / environment variables.
-  // Ye values apne hosting platform ke environment config mein daalo
-  // (e.g., Netlify env vars, Vercel env vars, ya server-side rendering).
-  // Niche ke config ko APNI values se replace karo aur is file mein mat rakho.
+<script type="module" id="fb-init">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { ref, set, get, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
   const firebaseConfig = {
-    apiKey: window.__FB_API_KEY__ || "",
-    authDomain: window.__FB_AUTH_DOMAIN__ || "",
-    databaseURL: window.__FB_DATABASE_URL__ || "",
-    projectId: window.__FB_PROJECT_ID__ || "",
-    storageBucket: window.__FB_STORAGE_BUCKET__ || "",
-    messagingSenderId: window.__FB_MESSAGING_SENDER_ID__ || "",
-    appId: window.__FB_APP_ID__ || ""
+    apiKey: "AIzaSyDYIR5kb031D1PQbCQF9UWoQKQyu4MjEco",
+    authDomain: "turf28-a10e1.firebaseapp.com",
+    databaseURL: "https://turf28-a10e1-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "turf28-a10e1",
+    storageBucket: "turf28-a10e1.firebasestorage.app",
+    messagingSenderId: "521710398801",
+    appId: "1:521710398801:web:435045df3e2da1925c3770"
   };
-  firebase.initializeApp(firebaseConfig);
-  const db = firebase.database();
+
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+
+  // db object — compat style API replicate karo
+  window.db = {
+    ref: (path) => {
+      const dbRef = ref(database, path);
+      return {
+        once: (event, cb) => get(dbRef).then(snap => cb(snap)).catch(e => console.warn(e)),
+        on: (event, cb, errCb) => {
+          const unsub = onValue(dbRef, cb, errCb || (e => console.warn(e)));
+          window._fbUnsubs = window._fbUnsubs || [];
+          window._fbUnsubs.push(unsub);
+          return { off: unsub };
+        },
+        off: () => {},
+        set: (val, cb) => set(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+        push: (val, cb) => push(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+        remove: (cb) => remove(dbRef).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+      };
+    }
+  };
+
+  console.log("✅ Firebase initialized successfully!");
 </script>
 
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script>
-  // ⚠️ SECURITY: EmailJS keys ko apne hosting platform ke environment variables mein rakho.
-  // Ye values source code mein hardcode mat karo.
-  const EMAILJS_PUBLIC_KEY  = window.__EMAILJS_PUBLIC_KEY__ || "";
-  const EMAILJS_SERVICE_ID  = window.__EMAILJS_SERVICE_ID__ || "";
-  const EMAILJS_TEMPLATE_ID = window.__EMAILJS_TEMPLATE_ID__ || "";
+  const EMAILJS_PUBLIC_KEY  = "ToZA8IUzWW7ve-J8W";
+  const EMAILJS_SERVICE_ID  = "service_9dqw9sn";
+  const EMAILJS_TEMPLATE_ID = "template_2koe8xr";
   window.EMAILJS_PUBLIC_KEY  = EMAILJS_PUBLIC_KEY;
   window.EMAILJS_SERVICE_ID  = EMAILJS_SERVICE_ID;
   window.EMAILJS_TEMPLATE_ID = EMAILJS_TEMPLATE_ID;
@@ -196,7 +215,7 @@ const BASE_BOOKINGS = {};
 
 function saveBookings(b) {
   try {
-    db.ref("bookedSlots").set(b, err => {
+    window.db.ref("bookedSlots").set(b, err => {
       if (err) console.warn("FB write failed:", err);
     });
   } catch(e) { console.warn("FB save error:", e); }
@@ -210,7 +229,7 @@ function saveHistory(h) {
 }
 
 function pushHistoryEntry(entry) {
-  try { db.ref("bookingHistory").push(entry); } catch(e) { console.warn("FB push error:", e); }
+  try { window.db.ref("bookingHistory").push(entry); } catch(e) { console.warn("FB push error:", e); }
 }
 
 function loadBookings() {
@@ -672,14 +691,14 @@ function App() {
     // NOTE: Pehli deploy ke baad Firebase Console > Realtime Database mein
     // appConfig node manually set karo, phir is seed block ko hata do.
     try {
-      db.ref("appConfig").once("value", snap => {
+      window.db.ref("appConfig").once("value", snap => {
         const cfg = snap.val() || {};
         if (!cfg.adminPin || !cfg.ownerCoupon) {
           // ⚠️ FIRST-TIME SETUP ONLY — Ye block ek baar chalega, Firebase save hone ke baad
           // is poore if-block ko file se delete kar do aur sirf else wala rakhna
           const initPin    = "748291";   // ← Pehli deploy ke baad Firebase Console se change karo
           const initCoupon = "X7T28K";   // ← Pehli deploy ke baad Firebase Console se change karo
-          db.ref("appConfig").set({ adminPin: initPin, ownerCoupon: initCoupon });
+          window.db.ref("appConfig").set({ adminPin: initPin, ownerCoupon: initCoupon });
           setAppConfig({ adminPin: initPin, ownerCoupon: initCoupon });
         } else {
           // ✅ Normal flow — Firebase se values aati hain, source mein kuch nahi
@@ -691,7 +710,7 @@ function App() {
     const timeout = setTimeout(() => setFbLoading(false), 5000);
     let bRef, hRef;
     try {
-      bRef = db.ref("bookedSlots");
+      bRef = window.db.ref("bookedSlots");
       bRef.on("value", snap => {
         clearTimeout(timeout);
         const data = snap.val() || {};
@@ -715,7 +734,7 @@ function App() {
         setFbLoading(false);
       }, err => { console.warn("FB err:", err); setFbLoading(false); });
 
-      hRef = db.ref("bookingHistory");
+      hRef = window.db.ref("bookingHistory");
       hRef.on("value", snap => {
         const data = snap.val();
         if (data) {
@@ -778,7 +797,7 @@ function App() {
     return errs;
   };
 
-  const isCouponValid = () => appConfig.ownerCoupon && form.coupon.trim().toUpperCase() === appConfig.ownerCoupon.toUpperCase();
+  const isCouponValid = () => appConfig.ownerCoupon && form.coupon.trim().toUpperCase() === String(appConfig.ownerCoupon).trim().toUpperCase();
 
   const getFinalAmount = () => {
     if (isCouponValid()) return 0;
@@ -799,9 +818,18 @@ function App() {
   };
 
   const handleRazorpayPayment = () => {
+    if (!window.Razorpay) {
+      alert("⚠️ Payment gateway load nahi hua. Please page refresh karo aur dobara try karo.");
+      return;
+    }
     const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours || 1);
+    const rzpKey = "rzp_test_SV3y7JKV7tqCQs"; // ← Apna actual Razorpay Key ID yahan daalo
+    if (!rzpKey || rzpKey.trim() === "") {
+      alert("⚠️ Razorpay Key missing hai. Developer se contact karo.");
+      return;
+    }
     const options = {
-      key: window.__RAZORPAY_KEY__ || "",  // ⚠️ SECURITY: Razorpay key environment variable se inject karo
+      key: rzpKey,
       amount: totalAmt * 100, // paise
       currency: "INR",
       name: "Turf 28 Sports Arena",
@@ -813,7 +841,7 @@ function App() {
         const slotsToBlock = selectedSlots || [slot];
         const endTime = (confirmed.selectedSlots||[confirmed.slot])[(confirmed.selectedSlots||[confirmed.slot]).length-1]?.split("–")[1]?.trim()||"";
 
-        db.ref("bookedSlots").once("value", snap => {
+        window.db.ref("bookedSlots").once("value", snap => {
           const current = snap.val() || {};
           if (!current[date]) current[date] = { cricket: [], football: [] };
           // 1 turf only — both sports lose same slot
@@ -821,7 +849,7 @@ function App() {
             const existing = current[date][sp] || [];
             current[date][sp] = [...new Set([...existing, ...slotsToBlock])];
           });
-          db.ref("bookedSlots").set(current, err => {
+          window.db.ref("bookedSlots").set(current, err => {
             if (err) console.warn("❌ bookedSlots write failed:", err);
             else console.log("✅ Slots blocked in Firebase");
           });
@@ -857,7 +885,7 @@ function App() {
         };
 
         // Firebase push — yahi asli save hai (Firebase listener khud setHistory update karega)
-        db.ref("bookingHistory").push(entry, err => {
+        window.db.ref("bookingHistory").push(entry, err => {
           if (err) console.warn("❌ bookingHistory push failed:", err);
           else console.log("✅ Booking saved to Firebase bookingHistory!");
         });
@@ -909,11 +937,16 @@ function App() {
         }
       }
     };
-    const rzp = new window.Razorpay(options);
-    rzp.on("payment.failed", function(response) {
-      alert("Payment failed: " + response.error.description + ". Please try again.");
-    });
-    rzp.open();
+    try {
+      const rzp = new window.Razorpay(options);
+      rzp.on("payment.failed", function(response) {
+        alert("Payment failed: " + response.error.description + ". Please try again.");
+      });
+      rzp.open();
+    } catch(err) {
+      console.error("Razorpay error:", err);
+      alert("⚠️ Payment gateway mein problem aa gayi: " + err.message + "\n\nRazorpay Key check karo ya page refresh karo.");
+    }
   };;
 
   // Not used anymore - kept for reference
@@ -925,14 +958,14 @@ function App() {
     const endTime = slotsToBlock[slotsToBlock.length-1]?.split("–")[1]?.trim() || "";
 
     // ── 1. SLOTS BLOCK — same atomic pattern as Razorpay (both sports, Firebase first) ──
-    db.ref("bookedSlots").once("value", snap => {
+    window.db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
       if (!current[date]) current[date] = { cricket: [], football: [] };
       ["cricket", "football"].forEach(sp => {
         const existing = current[date][sp] || [];
         current[date][sp] = [...new Set([...existing, ...slotsToBlock])];
       });
-      db.ref("bookedSlots").set(current, err => {
+      window.db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("❌ bookedSlots write failed:", err);
       });
     });
@@ -967,7 +1000,7 @@ function App() {
     };
 
     // Firebase push — Firebase listener setHistory update karega automatically
-    db.ref("bookingHistory").push(entry, err => {
+    window.db.ref("bookingHistory").push(entry, err => {
       if (err) console.warn("❌ bookingHistory push failed:", err);
       else console.log("✅ Coupon booking saved to Firebase!");
     });
@@ -1003,7 +1036,7 @@ function App() {
       return updated;
     });
     // Write to Firebase - release from BOTH sports (1 turf only)
-    db.ref("bookedSlots").once("value", snap => {
+    window.db.ref("bookedSlots").once("value", snap => {
       const current = snap.val() || {};
       if (!current[date]) current[date] = { cricket: [], football: [] };
       ["cricket","football"].forEach(sp => {
@@ -1011,17 +1044,17 @@ function App() {
           current[date][sp] = current[date][sp].filter(s => s !== slot);
         }
       });
-      db.ref("bookedSlots").set(current, err => {
+      window.db.ref("bookedSlots").set(current, err => {
         if (err) console.warn("FB release failed:", err);
       });
     });
     // Remove from Firebase history too
-    db.ref("bookingHistory").once("value", snap => {
+    window.db.ref("bookingHistory").once("value", snap => {
       const data = snap.val();
       if (!data) return;
       Object.entries(data).forEach(([key, val]) => {
         if (val.sport===sport && val.date===date && val.slot===slot) {
-          db.ref("bookingHistory/"+key).remove();
+          window.db.ref("bookingHistory/"+key).remove();
         }
       });
     });
@@ -1828,11 +1861,11 @@ function App() {
                 <input className="inp" type="password" placeholder="Enter PIN" maxLength={6}
                   value={adminPin} onChange={e=>{setAdminPin(e.target.value);setAdminPinError(false)}}
                   style={{ textAlign:"center",fontSize:22,letterSpacing:8,maxWidth:200,borderColor:adminPinError?"#ef4444":"#BBF7D0",color:"#111827" }}
-                  onKeyDown={e=>{ if(e.key==="Enter"){ if(appConfig.adminPin && adminPin===appConfig.adminPin){setAdminAuth(true);setAdminPinError(false);}else{setAdminPinError(true);setAdminPin("");}}}}
+                  onKeyDown={e=>{ if(e.key==="Enter"){ if(appConfig.adminPin && String(adminPin).trim()===String(appConfig.adminPin).trim()){setAdminAuth(true);setAdminPinError(false);}else{setAdminPinError(true);setAdminPin("");}}}}
                 />
                 {adminPinError && <div style={{ color:"#ef4444",fontSize:12,marginTop:8,fontWeight:600 }}>⚠ Wrong PIN. Try again.</div>}
                 <div style={{ display:"flex",gap:10,justifyContent:"center",marginTop:16 }}>
-                  <button className="btn bg" onClick={()=>{ if(appConfig.adminPin && adminPin===appConfig.adminPin){setAdminAuth(true);setAdminPinError(false);}else{setAdminPinError(true);setAdminPin("");}}} style={{ fontSize:15,padding:"10px 24px" }}>Unlock</button>
+                  <button className="btn bg" onClick={()=>{ if(appConfig.adminPin && String(adminPin).trim()===String(appConfig.adminPin).trim()){setAdminAuth(true);setAdminPinError(false);}else{setAdminPinError(true);setAdminPin("");}}} style={{ fontSize:15,padding:"10px 24px" }}>Unlock</button>
                   <button className="btn bou" onClick={()=>{setAdminOpen(false);setAdminPin("");setAdminPinError(false);}} style={{ fontSize:15,padding:"10px 24px" }}>Cancel</button>
                 </div>
               </div>
@@ -1857,8 +1890,16 @@ function App() {
   );
 }
 
-const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App/>);
+// Wait for Firebase db to be ready before rendering
+function startApp() {
+  if (window.db) {
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App/>);
+  } else {
+    setTimeout(startApp, 50);
+  }
+}
+startApp();
 </script>
 </body>
 </html>
