@@ -823,7 +823,7 @@ function App() {
       return;
     }
     const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours || 1);
-    const rzpKey = "rzp_test_SV3y7JKV7tqCQs"; // ← Apna actual Razorpay Key ID yahan daalo
+    const rzpKey = "rzp_live_SWfwCyi6m2BB3C"; // ← Apna actual Razorpay Key ID yahan daalo
     if (!rzpKey || rzpKey.trim() === "") {
       alert("⚠️ Razorpay Key missing hai. Developer se contact karo.");
       return;
