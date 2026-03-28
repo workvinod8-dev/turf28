@@ -1576,34 +1576,36 @@ function App() {
                 )}
               </div>
 
-              {/* Hours Selector */}
+              {/* Hours Dropdown */}
               <div style={{ marginBottom:22 }}>
                 <label className="lbl">How Many Hours?</label>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {[1,2,3,4,5,6].map(h => (
-                    <button key={h} onClick={()=>setBooking(b=>({...b,hours:h,slot:null}))}
-                      style={{ padding:"10px 0", minWidth:52, border:`2px solid ${booking.hours===h?"#15803D":"#BBF7D0"}`,
-                        background:booking.hours===h?"#15803D":"#fff", color:booking.hours===h?"#fff":"#374151",
-                        borderRadius:8, cursor:"pointer", fontFamily:"'Bebas Neue',cursive", fontSize:18,
-                        letterSpacing:1, transition:"all .15s", fontWeight:700 }}>
-                      {h}h
-                    </button>
-                  ))}
+                <div style={{ position:"relative" }}>
+                  <select
+                    value={booking.hours}
+                    onChange={e=>setBooking(b=>({...b,hours:Number(e.target.value),slot:null}))}
+                    style={{ width:"100%", padding:"13px 42px 13px 16px", background:"#fff", border:"1.5px solid #BBF7D0", color:"#111827", fontSize:15, fontWeight:700, borderRadius:8, outline:"none", cursor:"pointer", appearance:"none", WebkitAppearance:"none", fontFamily:"'DM Sans',sans-serif", transition:"border-color .2s" }}
+                    onFocus={e=>e.target.style.borderColor="#15803D"}
+                    onBlur={e=>e.target.style.borderColor="#BBF7D0"}>
+                    {[1,2,3,4,5,6].map(h=>(
+                      <option key={h} value={h}>{h} Hour{h>1?"s":""}</option>
+                    ))}
+                  </select>
+                  <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", pointerEvents:"none", fontSize:14, color:"#6B7280" }}>▾</span>
                 </div>
-                <div style={{ marginTop:8, fontSize:12, color:"#6B7280" }}>
-                  {booking.hours===1 ? "1 hour selected" : `${booking.hours} consecutive hours · Total: ₹${booking.slot ? getSlotPrice(booking.slot, booking.date)*booking.hours : "—"}`}
+                <div style={{ marginTop:7, fontSize:12, color:"#6B7280" }}>
+                  {booking.hours===1 ? "1 hour — single slot" : `${booking.hours} consecutive hours · Total: ₹${booking.slot ? getSlotPrice(booking.slot, booking.date)*booking.hours : "—"}`}
                 </div>
               </div>
 
-              {/* Slot Grid */}
+              {/* Slot Dropdown */}
               <div style={{ marginBottom:28 }}>
-                <div style={{ display:"flex",justifyContent:"space-between",marginBottom:10 }}>
+                <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
                   <label className="lbl" style={{ marginBottom:0 }}>Select Start Time</label>
                   <span style={{ fontSize:11,color:"#6B7280" }}>{avail.length}/{ALL_SLOTS.length} free</span>
                 </div>
-                <div style={{ display:"flex",gap:10,marginBottom:12,flexWrap:"wrap" }}>
-                  <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day ₹{isWeekend(booking.date)?600:500}/hr</span>
-                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening ₹{isWeekend(booking.date)?800:700}/hr</span>
+                <div style={{ display:"flex",gap:12,marginBottom:12,flexWrap:"wrap" }}>
+                  <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day (5AM–5PM) ₹{isWeekend(booking.date)?600:500}/hr</span>
+                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening (5PM–11PM) ₹{isWeekend(booking.date)?800:700}/hr</span>
                 </div>
 
                 {avail.length===0 ? (
@@ -1613,45 +1615,41 @@ function App() {
                     <div style={{ fontSize:12,color:"#6B7280",marginTop:4 }}>Please pick another date</div>
                   </div>
                 ) : (
-                  <div className="slotgrid">
-                    {avail.map(slot=>{
-                      const ev = getSlotHour(slot)>=17;
-                      const pr = getSlotPrice(slot, booking.date);
-                      const sel = booking.slot===slot;
-                      // Check if this slot can accommodate required hours
-                      const canBook = areAllSlotsAvailable(slot, booking.hours, booking.sport, booking.date);
-                      // Check if slot is part of current selection
-                      const inRange = booking.slot && getSelectedSlots().includes(slot);
-                      return (
-                        <button key={slot}
-                          disabled={!canBook}
-                          onClick={()=>canBook && setBooking(b=>({...b,slot}))}
-                          style={{ padding:"9px 0", textAlign:"center",
-                            border:`1.5px solid ${sel?"#15803D":inRange?"#86EFAC":canBook?"#BBF7D0":"#FEE2E2"}`,
-                            background:sel?"#15803D":inRange?"#F0FDF4":canBook?"#fff":"#FEF2F2",
-                            color:sel?"#fff":inRange?"#15803D":canBook?"#374151":"#FCA5A5",
-                            borderRadius:8, cursor:canBook?"pointer":"not-allowed",
-                            fontFamily:"'DM Sans',sans-serif", fontSize:11, fontWeight:600,
-                            width:"100%", transition:"all .15s", opacity:canBook?1:0.6 }}>
-                          <div>{slot}</div>
-                          <div style={{ fontSize:9,marginTop:1,color:sel?"#fff":inRange?"#15803D":canBook?ev?"#D97706":"#15803D":"#FCA5A5" }}>
-                            {canBook ? `₹${pr}` : "N/A"}
-                          </div>
-                        </button>
-                      );
-                    })}
+                  <div style={{ position:"relative" }}>
+                    <select
+                      value={booking.slot||""}
+                      onChange={e=>setBooking(b=>({...b,slot:e.target.value||null}))}
+                      style={{ width:"100%", padding:"13px 42px 13px 16px", background:booking.slot?"#F0FDF4":"#fff", border:`1.5px solid ${booking.slot?"#15803D":"#BBF7D0"}`, color:booking.slot?"#15803D":"#374151", fontSize:14, fontWeight:700, borderRadius:8, outline:"none", cursor:"pointer", appearance:"none", WebkitAppearance:"none", fontFamily:"'DM Sans',sans-serif", transition:"all .2s" }}
+                      onFocus={e=>{ e.target.style.borderColor="#15803D"; e.target.style.boxShadow="0 0 0 3px rgba(21,128,61,0.1)"; }}
+                      onBlur={e=>{ e.target.style.borderColor=booking.slot?"#15803D":"#BBF7D0"; e.target.style.boxShadow="none"; }}>
+                      <option value="">— Choose a start time —</option>
+                      {avail.map(slot=>{
+                        const canBook = areAllSlotsAvailable(slot, booking.hours, booking.sport, booking.date);
+                        const ev = getSlotHour(slot)>=17;
+                        const pr = getSlotPrice(slot, booking.date);
+                        if(!canBook) return null;
+                        return (
+                          <option key={slot} value={slot}>
+                            {ev?"🌙":"☀️"} {slot}  —  ₹{pr}/hr
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", pointerEvents:"none", fontSize:14, color:booking.slot?"#15803D":"#6B7280" }}>▾</span>
                   </div>
                 )}
 
                 {/* Selected range summary */}
-                {booking.slot && booking.hours > 1 && (
-                  <div style={{ marginTop:14, background:"rgba(21,128,61,0.08)", border:"1px solid #BBF7D0", borderRadius:10, padding:"12px 16px" }}>
-                    <div style={{ fontSize:12, color:"#15803D", fontWeight:700, marginBottom:4 }}>✅ Selected {booking.hours}-Hour Block</div>
-                    <div style={{ fontSize:12, color:"#374151" }}>
-                      {getSelectedSlots()[0]?.split("–")[0].trim()} → {getSelectedSlots()[getSelectedSlots().length-1]?.split("–")[1].trim()}
+                {booking.slot && (
+                  <div style={{ marginTop:12, background:"rgba(21,128,61,0.08)", border:"1px solid rgba(21,128,61,0.25)", borderRadius:10, padding:"14px 16px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+                    <div>
+                      <div style={{ fontSize:11, color:"#15803D", fontWeight:700, marginBottom:3 }}>✅ {booking.hours} Hour{booking.hours>1?"s":""} Selected</div>
+                      <div style={{ fontSize:13, color:"#111827", fontWeight:600 }}>
+                        {getSelectedSlots()[0]?.split("–")[0].trim()} → {getSelectedSlots()[getSelectedSlots().length-1]?.split("–")[1].trim()}
+                      </div>
                     </div>
-                    <div style={{ fontSize:13, color:"#D97706", fontWeight:700, marginTop:4 }}>
-                      Total: ₹{getSlotPrice(booking.slot, booking.date) * booking.hours}
+                    <div className="bb" style={{ fontSize:22, color:"#D97706" }}>
+                      ₹{getSlotPrice(booking.slot, booking.date) * booking.hours}
                     </div>
                   </div>
                 )}
