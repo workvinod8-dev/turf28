@@ -1601,18 +1601,35 @@ function App() {
               <div style={{ marginBottom:28 }}>
                 <div style={{ display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8 }}>
                   <label className="lbl" style={{ marginBottom:0 }}>Select Start Time</label>
-                  <span style={{ fontSize:11,color:"#6B7280" }}>{avail.length}/{ALL_SLOTS.length} free</span>
+                  <span style={{ fontSize:11,color:"#6B7280" }}>
+                    {(()=>{ const c = avail.filter(s=>areAllSlotsAvailable(s,booking.hours,booking.sport,booking.date)).length; return `${c} slot${c!==1?"s":""} available`; })()}
+                  </span>
                 </div>
-                <div style={{ display:"flex",gap:12,marginBottom:12,flexWrap:"wrap" }}>
+                <div style={{ display:"flex",gap:12,marginBottom:8,flexWrap:"wrap" }}>
                   <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day (5AM–5PM) ₹{isWeekend(booking.date)?600:500}/hr</span>
                   <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening (5PM–11PM) ₹{isWeekend(booking.date)?800:700}/hr</span>
                 </div>
+                {booking.hours > 1 && (
+                  <div style={{ marginBottom:10, padding:"8px 12px", background:"rgba(59,130,246,0.06)", border:"1px solid rgba(59,130,246,0.2)", borderRadius:8, fontSize:11, color:"#1D4ED8" }}>
+                    ℹ️ Only start times with <strong>{booking.hours} consecutive free slots</strong> are shown below.
+                  </div>
+                )}
 
                 {avail.length===0 ? (
                   <div style={{ background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)",borderRadius:10,padding:22,textAlign:"center" }}>
                     <div style={{ fontSize:28,marginBottom:5 }}>😔</div>
                     <div className="bb" style={{ fontSize:20,color:"#DC2626" }}>All Slots Booked</div>
                     <div style={{ fontSize:12,color:"#6B7280",marginTop:4 }}>Please pick another date</div>
+                  </div>
+                ) : avail.filter(s=>areAllSlotsAvailable(s,booking.hours,booking.sport,booking.date)).length===0 ? (
+                  <div style={{ background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)",borderRadius:10,padding:22,textAlign:"center" }}>
+                    <div style={{ fontSize:28,marginBottom:5 }}>⏳</div>
+                    <div className="bb" style={{ fontSize:18,color:"#D97706" }}>No {booking.hours}-Hour Block Available</div>
+                    <div style={{ fontSize:12,color:"#6B7280",marginTop:6,lineHeight:1.6 }}>No {booking.hours} consecutive free slots available on this date. Try fewer hours or pick another date.</div>
+                    <button onClick={()=>setBooking(b=>({...b,hours:1,slot:null}))}
+                      style={{ marginTop:12,padding:"8px 18px",background:"#15803D",color:"#fff",border:"none",borderRadius:7,cursor:"pointer",fontFamily:"'Bebas Neue',cursive",fontSize:14,letterSpacing:1 }}>
+                      Try 1 Hour
+                    </button>
                   </div>
                 ) : (
                   <div style={{ position:"relative" }}>
@@ -1628,9 +1645,14 @@ function App() {
                         const ev = getSlotHour(slot)>=17;
                         const pr = getSlotPrice(slot, booking.date);
                         if(!canBook) return null;
+                        const startIdx = ALL_SLOTS.indexOf(slot);
+                        const endSlot = ALL_SLOTS[startIdx + booking.hours - 1];
+                        const startTime = slot.split("–")[0].trim();
+                        const endTime = endSlot ? endSlot.split("–")[1].trim() : slot.split("–")[1].trim();
+                        const total = pr * booking.hours;
                         return (
                           <option key={slot} value={slot}>
-                            {ev?"🌙":"☀️"} {slot}  —  ₹{pr}/hr
+                            {ev?"🌙":"☀️"} {startTime} – {endTime}  ({booking.hours}hr)  —  ₹{total}
                           </option>
                         );
                       })}
