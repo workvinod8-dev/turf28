@@ -933,14 +933,76 @@ function App() {
       theme: { color: "#15803D" },
       modal: {
         ondismiss: function() {
-          console.log("Payment cancelled");
+          // Payment cancel ya close — temporarily blocked slots release karo
+          const { date, selectedSlots, slot } = confirmed;
+          const slotsToRelease = selectedSlots || [slot];
+          window.db.ref("bookedSlots").once("value", snap => {
+            const current = snap.val() || {};
+            ["cricket","football"].forEach(sp => {
+              if (current[date]?.[sp]) {
+                current[date][sp] = current[date][sp].filter(s => !slotsToRelease.includes(s));
+              }
+            });
+            window.db.ref("bookedSlots").set(current, err => {
+              if (err) console.warn("❌ Slot release failed:", err);
+              else console.log("✅ Slots released after payment cancel");
+            });
+          });
+          setBookings(prev => {
+            const u = JSON.parse(JSON.stringify(prev || {}));
+            ["cricket","football"].forEach(sp => {
+              if (u[date]?.[sp]) u[date][sp] = u[date][sp].filter(s => !slotsToRelease.includes(s));
+            });
+            return u;
+          });
         }
       }
     };
     try {
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", function(response) {
+        // Payment fail — slots bhi release karo
+        const { date, selectedSlots, slot } = confirmed;
+        const slotsToRelease = selectedSlots || [slot];
+        window.db.ref("bookedSlots").once("value", snap => {
+          const current = snap.val() || {};
+          ["cricket","football"].forEach(sp => {
+            if (current[date]?.[sp]) {
+              current[date][sp] = current[date][sp].filter(s => !slotsToRelease.includes(s));
+            }
+          });
+          window.db.ref("bookedSlots").set(current);
+        });
+        setBookings(prev => {
+          const u = JSON.parse(JSON.stringify(prev || {}));
+          ["cricket","football"].forEach(sp => {
+            if (u[date]?.[sp]) u[date][sp] = u[date][sp].filter(s => !slotsToRelease.includes(s));
+          });
+          return u;
+        });
         alert("Payment failed: " + response.error.description + ". Please try again.");
+      });
+      // Razorpay open karne se PEHLE slot block karo (optimistic lock)
+      const { date: _d, selectedSlots: _ss, slot: _sl } = confirmed;
+      const _slotsToBlock = _ss || [_sl];
+      window.db.ref("bookedSlots").once("value", snap => {
+        const current = snap.val() || {};
+        if (!current[_d]) current[_d] = { cricket: [], football: [] };
+        ["cricket","football"].forEach(sp => {
+          current[_d][sp] = [...new Set([...(current[_d][sp]||[]), ..._slotsToBlock])];
+        });
+        window.db.ref("bookedSlots").set(current, err => {
+          if (err) console.warn("❌ Pre-block failed:", err);
+          else console.log("✅ Slots pre-blocked before payment");
+        });
+      });
+      setBookings(prev => {
+        const u = JSON.parse(JSON.stringify(prev || {}));
+        if (!u[_d]) u[_d] = { cricket: [], football: [] };
+        ["cricket","football"].forEach(sp => {
+          u[_d][sp] = [...new Set([...(u[_d][sp]||[]), ..._slotsToBlock])];
+        });
+        return u;
       });
       rzp.open();
     } catch(err) {
