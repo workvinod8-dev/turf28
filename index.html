@@ -838,6 +838,8 @@ function App() {
       alert("⚠️ Razorpay Key missing hai. Developer se contact karo.");
       return;
     }
+    // u2705 SCOPING FIX: options ke bahar declare karo taaki handler + ondismiss dono access kar sakein
+    let paymentSucceeded = false;
     const options = {
       key: rzpKey,
       amount: totalAmt * 100, // paise
@@ -977,7 +979,6 @@ function App() {
       }
     };
     try {
-      let paymentSucceeded = false; // ✅ FIX Bug 5: flag track karta hai payment success hua ya nahi
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", function(response) {
         // ✅ FIX: Payment fail hone par slot release karo (pre-block tha toh hatao)
