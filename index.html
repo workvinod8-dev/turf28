@@ -667,6 +667,8 @@ function App() {
   const [bookings, setBookings] = useState(loadBookings);
   const [history, setHistory] = useState(loadHistory);
   const [booking, setBooking] = useState({ sport:null, date:getToday(), slot:null, hours:1 });
+  // ✅ FIX Bug 3: Har minute auto-refresh — aaj ke past slots automatically filter ho jaate hain
+  const [_tick, setTick] = useState(0);
   const [form, setForm] = useState({ name:"", phone:"", players:"", email:"", coupon:"" });
   const [couponStatus, setCouponStatus] = useState(null);
   // ⚠️ SECURITY: Admin PIN aur Coupon Firebase ke "appConfig" node mein store hain.
@@ -749,8 +751,12 @@ function App() {
       clearTimeout(timeout);
       setFbLoading(false);
     }
+    // ✅ FIX Bug 3: Har 60 second mein slot list refresh — aaj ke past slots gayab ho jaate hain
+    const slotRefreshTimer = setInterval(() => setTick(n => n + 1), 60 * 1000);
+
     return () => {
       clearTimeout(timeout);
+      clearInterval(slotRefreshTimer); // ✅ FIX Bug 3 cleanup
       try { if(bRef) bRef.off(); } catch(e) {}
       try { if(hRef) hRef.off(); } catch(e) {}
     };
@@ -961,7 +967,7 @@ function App() {
     try {
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", function(response) {
-        // Payment fail — slots bhi release karo
+        // ✅ FIX: Payment fail hone par slot release karo (pre-block tha toh hatao)
         const { date, selectedSlots, slot } = confirmed;
         const slotsToRelease = selectedSlots || [slot];
         window.db.ref("bookedSlots").once("value", snap => {
@@ -971,7 +977,9 @@ function App() {
               current[date][sp] = current[date][sp].filter(s => !slotsToRelease.includes(s));
             }
           });
-          window.db.ref("bookedSlots").set(current);
+          window.db.ref("bookedSlots").set(current, err => {
+            if (!err) console.log("✅ Slots released after payment failure");
+          });
         });
         setBookings(prev => {
           const u = JSON.parse(JSON.stringify(prev || {}));
@@ -982,20 +990,13 @@ function App() {
         });
         alert("Payment failed: " + response.error.description + ". Please try again.");
       });
-      // Razorpay open karne se PEHLE slot block karo (optimistic lock)
+
+      // ✅ BUG 1 FIX: Pehle Firebase mein block write karo, phir ANDAR se rzp.open() call karo.
+      // Isse ondismiss hamesha block ke baad fire hoga — race condition khatam.
       const { date: _d, selectedSlots: _ss, slot: _sl } = confirmed;
       const _slotsToBlock = _ss || [_sl];
-      window.db.ref("bookedSlots").once("value", snap => {
-        const current = snap.val() || {};
-        if (!current[_d]) current[_d] = { cricket: [], football: [] };
-        ["cricket","football"].forEach(sp => {
-          current[_d][sp] = [...new Set([...(current[_d][sp]||[]), ..._slotsToBlock])];
-        });
-        window.db.ref("bookedSlots").set(current, err => {
-          if (err) console.warn("❌ Pre-block failed:", err);
-          else console.log("✅ Slots pre-blocked before payment");
-        });
-      });
+
+      // Local UI turant update karo (user ko slot "held" dikhega)
       setBookings(prev => {
         const u = JSON.parse(JSON.stringify(prev || {}));
         if (!u[_d]) u[_d] = { cricket: [], football: [] };
@@ -1004,7 +1005,21 @@ function App() {
         });
         return u;
       });
-      rzp.open();
+
+      // Firebase write confirm hone ke baad hi Razorpay open karo
+      window.db.ref("bookedSlots").once("value", snap => {
+        const current = snap.val() || {};
+        if (!current[_d]) current[_d] = { cricket: [], football: [] };
+        ["cricket","football"].forEach(sp => {
+          current[_d][sp] = [...new Set([...(current[_d][sp]||[]), ..._slotsToBlock])];
+        });
+        window.db.ref("bookedSlots").set(current, err => {
+          if (err) console.warn("❌ Pre-block failed:", err);
+          else console.log("✅ Slots pre-blocked — now opening Razorpay");
+          // ✅ KEY FIX: rzp.open() sirf Firebase write ke baad — guaranteed sequence
+          rzp.open();
+        });
+      });
     } catch(err) {
       console.error("Razorpay error:", err);
       alert("⚠️ Payment gateway mein problem aa gayi: " + err.message + "\n\nRazorpay Key check karo ya page refresh karo.");
