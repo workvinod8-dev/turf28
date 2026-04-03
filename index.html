@@ -367,6 +367,23 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
 
   const getStartTime = (b) => b.slot?.split("–")[0]?.trim() || b.slot || "";
 
+  // ✅ FIX Bug 6: Admin status Firebase mein save karo — panel band/khulne par status preserve hoga
+  const updateBookingStatus = (bookedAt, newStatus) => {
+    setStatusMap(prev => ({ ...prev, [bookedAt]: newStatus }));
+    window.db.ref("bookingHistory").once("value", snap => {
+      const data = snap.val();
+      if (!data) return;
+      Object.entries(data).forEach(([key, val]) => {
+        if (val.bookedAt === bookedAt) {
+          window.db.ref("bookingHistory/" + key + "/status").set(newStatus, err => {
+            if (err) console.warn("❌ Status update failed:", err);
+            else console.log("✅ Status updated in Firebase:", newStatus);
+          });
+        }
+      });
+    });
+  };
+
   return (
     <div>
       {/* Header */}
@@ -503,7 +520,7 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
                           <div className="bb" style={{ fontSize:10,color:"#9CA3AF",letterSpacing:2,marginBottom:6 }}>UPDATE STATUS</div>
                           <div style={{ display:"flex",gap:5,flexWrap:"wrap" }}>
                             {["Confirmed","Pending Confirmation","Completed","Cancelled"].map(s=>(
-                              <button key={s} onClick={()=>setStatusMap(prev=>({...prev,[b.bookedAt]:s}))}
+                              <button key={s} onClick={()=>updateBookingStatus(b.bookedAt, s)}
                                 style={{ padding:"5px 10px",borderRadius:6,border:"1.5px solid",fontSize:10,fontWeight:700,cursor:"pointer",
                                   borderColor:status===s?(statusColors[s]?.border||"#BBF7D0"):"#E5E7EB",
                                   background:status===s?(statusColors[s]?.bg||"#F9FAFB"):"#fff",
@@ -715,24 +732,11 @@ function App() {
       bRef = window.db.ref("bookedSlots");
       bRef.on("value", snap => {
         clearTimeout(timeout);
+        // ✅ FIX Bug 4 (Merge Logic): Firebase hi single source of truth hai.
+        // Pehle wala merge local+FB slots karta tha jo released slots ko wapas le aata tha.
+        // Ab pre-block Firebase write ke andar hota hai, isliye merge ki zarurat nahi.
         const data = snap.val() || {};
-        // Always merge FB data with local pending slots (never lose locally blocked slots)
-        setBookings(prev => {
-          const merged = JSON.parse(JSON.stringify(data));
-          // Preserve any locally blocked slots not yet confirmed by Firebase
-          Object.keys(prev || {}).forEach(d => {
-            ['cricket','football'].forEach(sp => {
-              const localSlots = (prev[d]?.[sp] || []);
-              const fbSlots = (merged[d]?.[sp] || []);
-              const union = [...new Set([...fbSlots, ...localSlots])];
-              if (union.length > 0) {
-                if (!merged[d]) merged[d] = {};
-                merged[d][sp] = union;
-              }
-            });
-          });
-          return merged;
-        });
+        setBookings(data);
         setFbLoading(false);
       }, err => { console.warn("FB err:", err); setFbLoading(false); });
 
@@ -841,7 +845,10 @@ function App() {
       name: "Turf 28 Sports Arena",
       description: `${confirmed.sport==="cricket"?"Cricket":"Football"} Booking - ${confirmed.slot}`,
       image: "",
+      // ✅ FIX Bug 5: paymentSucceeded flag — Razorpay mein kabhi kabhi handler ke baad
+      // ondismiss bhi fire hota hai. Agar payment ho gayi to ondismiss slot release nahi karega.
       handler: function(response) {
+        paymentSucceeded = true; // flag set karo
         // ── 1. SLOTS BLOCK — Firebase se pehle read karo, phir atomic update ──
         const { sport, date, selectedSlots, slot } = confirmed;
         const slotsToBlock = selectedSlots || [slot];
@@ -939,6 +946,11 @@ function App() {
       theme: { color: "#15803D" },
       modal: {
         ondismiss: function() {
+          // ✅ FIX Bug 5: Agar payment succeed ho gayi thi to slot release mat karo
+          if (paymentSucceeded) {
+            console.log("ondismiss fired after successful payment — slot release skipped ✅");
+            return;
+          }
           // Payment cancel ya close — temporarily blocked slots release karo
           const { date, selectedSlots, slot } = confirmed;
           const slotsToRelease = selectedSlots || [slot];
@@ -965,6 +977,7 @@ function App() {
       }
     };
     try {
+      let paymentSucceeded = false; // ✅ FIX Bug 5: flag track karta hai payment success hua ya nahi
       const rzp = new window.Razorpay(options);
       rzp.on("payment.failed", function(response) {
         // ✅ FIX: Payment fail hone par slot release karo (pre-block tha toh hatao)
