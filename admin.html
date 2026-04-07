@@ -203,7 +203,7 @@ function LoginScreen({ onLogin }) {
     if (!appConfig) { setError(true); return; }
     setLoading(true);
     setTimeout(() => {
-      const correctUser = "admin";
+      const correctUser = "admin12";
       const correctPass = String(appConfig.adminPin || "").trim();
       if (username.trim() === correctUser && password.trim() === correctPass) {
         setError(false);
