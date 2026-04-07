@@ -688,9 +688,8 @@ function App() {
   const [_tick, setTick] = useState(0);
   const [form, setForm] = useState({ name:"", phone:"", players:"", email:"", coupon:"" });
   const [couponStatus, setCouponStatus] = useState(null);
-  // ⚠️ SECURITY: Admin PIN aur Coupon Firebase ke "appConfig" node mein store hain.
-  // Pehli baar load hone par automatically set ho jaate hain.
-  // Baad mein Firebase Console se change kar sakte ho: appConfig/adminPin aur appConfig/ownerCoupon
+  // Admin PIN and Coupon are loaded from Firebase "appConfig" node — never hardcoded here.
+  // To update: Firebase Console > Realtime Database > appConfig > adminPin / ownerCoupon
   const [appConfig, setAppConfig] = useState({ adminPin: null, ownerCoupon: null });
   const [errors, setErrors] = useState({});
   const [step, setStep] = useState(1);
@@ -706,23 +705,11 @@ function App() {
     try { localStorage.removeItem("turf28_bookings"); } catch(e) {}
     try { localStorage.removeItem("turf28_history"); } catch(e) {}
 
-    // ── Secure config (admin PIN + coupon) Firebase se load karo ──
-    // NOTE: Pehli deploy ke baad Firebase Console > Realtime Database mein
-    // appConfig node manually set karo, phir is seed block ko hata do.
+    // Load admin config from Firebase only — no credentials stored in source code
     try {
       window.db.ref("appConfig").once("value", snap => {
         const cfg = snap.val() || {};
-        if (!cfg.adminPin || !cfg.ownerCoupon) {
-          // ⚠️ FIRST-TIME SETUP ONLY — Ye block ek baar chalega, Firebase save hone ke baad
-          // is poore if-block ko file se delete kar do aur sirf else wala rakhna
-          const initPin    = "748291";   // ← Pehli deploy ke baad Firebase Console se change karo
-          const initCoupon = "X7T28K";   // ← Pehli deploy ke baad Firebase Console se change karo
-          window.db.ref("appConfig").set({ adminPin: initPin, ownerCoupon: initCoupon });
-          setAppConfig({ adminPin: initPin, ownerCoupon: initCoupon });
-        } else {
-          // ✅ Normal flow — Firebase se values aati hain, source mein kuch nahi
-          setAppConfig({ adminPin: cfg.adminPin, ownerCoupon: cfg.ownerCoupon });
-        }
+        setAppConfig({ adminPin: cfg.adminPin || null, ownerCoupon: cfg.ownerCoupon || null });
       });
     } catch(e) { console.warn("Config load error:", e); }
 
@@ -829,13 +816,13 @@ function App() {
 
   const handleRazorpayPayment = () => {
     if (!window.Razorpay) {
-      alert("⚠️ Payment gateway load nahi hua. Please page refresh karo aur dobara try karo.");
+      alert("⚠️ Payment gateway failed to load. Please refresh the page and try again.");
       return;
     }
     const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours || 1);
     const rzpKey = "rzp_live_SWfwCyi6m2BB3C"; // ← Apna actual Razorpay Key ID yahan daalo
     if (!rzpKey || rzpKey.trim() === "") {
-      alert("⚠️ Razorpay Key missing hai. Developer se contact karo.");
+      alert("⚠️ Razorpay Key is missing. Please contact the developer.");
       return;
     }
     // u2705 SCOPING FIX: options ke bahar declare karo taaki handler + ondismiss dono access kar sakein
@@ -1036,7 +1023,7 @@ function App() {
       });
     } catch(err) {
       console.error("Razorpay error:", err);
-      alert("⚠️ Payment gateway mein problem aa gayi: " + err.message + "\n\nRazorpay Key check karo ya page refresh karo.");
+      alert("⚠️ Payment gateway error: " + err.message + "\n\nPlease check the Razorpay Key or refresh the page.");
     }
   };;
 
@@ -1239,7 +1226,6 @@ function App() {
               <a href={WHATSAPP} target="_blank" rel="noopener noreferrer" className="na na-mob-hide" style={{ color:"#25D366" }}><WA_ICON/> WA</a>
               <div style={{ display:"flex",alignItems:"center",gap:6 }}>
                 <button className="btn bg bsm" onClick={() => goBook("cricket")}>Book Now</button>
-                <button onClick={()=>setAdminOpen(true)} style={{ background:"none",border:"none",cursor:"pointer",fontSize:18,opacity:.25,transition:"opacity .2s",padding:"4px",flexShrink:0 }} onMouseEnter={e=>e.currentTarget.style.opacity=1} onMouseLeave={e=>e.currentTarget.style.opacity=.25} title="Admin">⚙️</button>
               </div>
             </>}
             {page==="booking" && <button className="btn bou bsm" onClick={()=>setPage("home")}>← Back</button>}
