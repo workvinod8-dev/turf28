@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Admin Panel – Turf 28</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script type="module" id="fb-init">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { ref, set, get, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyDYIR5kb031D1PQbCQF9UWoQKQyu4MjEco",
+    authDomain: "turf28-a10e1.firebaseapp.com",
+    databaseURL: "https://turf28-a10e1-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "turf28-a10e1",
+    storageBucket: "turf28-a10e1.firebasestorage.app",
+    messagingSenderId: "521710398801",
+    appId: "1:521710398801:web:435045df3e2da1925c3770"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+
+  window.db = {
+    ref: (path) => {
+      const dbRef = ref(database, path);
+      return {
+        once: (event, cb) => get(dbRef).then(snap => cb(snap)).catch(e => console.warn(e)),
+        on: (event, cb, errCb) => {
+          const unsub = onValue(dbRef, cb, errCb || (e => console.warn(e)));
+          window._fbUnsubs = window._fbUnsubs || [];
+          window._fbUnsubs.push(unsub);
+          return { off: unsub };
+        },
+        off: () => {},
+        set: (val, cb) => set(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+        push: (val, cb) => push(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+        remove: (cb) => remove(dbRef).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+      };
+    }
+  };
+  console.log("✅ Firebase initialized!");
+</script>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{min-height:100%;background:#f0fdf4;color:#111827;font-family:'DM Sans',sans-serif}
+.bb{font-family:'Bebas Neue',cursive;letter-spacing:1.5px}
+.inp{width:100%;padding:11px 14px;background:#fff;border:1.5px solid #D1FAE5;color:#111827;font-size:14px;border-radius:9px;outline:none;transition:border-color .2s,box-shadow .2s;font-family:'DM Sans',sans-serif}
+.inp:focus{border-color:#15803D;box-shadow:0 0 0 3px rgba(21,128,61,0.1)}
+.inp::placeholder{color:#9CA3AF}
+.lbl{display:block;font-size:10px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#6B7280;margin-bottom:7px}
+.cr{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid #E5E7EB}
+.cr:last-child{border-bottom:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}
+.fadeIn{animation:fadeIn .35s ease forwards}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+
+/* Scrollbar */
+::-webkit-scrollbar{width:5px}
+::-webkit-scrollbar-track{background:#f0fdf4}
+::-webkit-scrollbar-thumb{background:#86EFAC;border-radius:4px}
+
+/* Stat cards hover */
+.stat-card{transition:transform .18s,box-shadow .18s}
+.stat-card:hover{transform:translateY(-4px);box-shadow:0 8px 24px rgba(0,0,0,0.08)!important}
+
+/* Booking card */
+.bk-card{background:#fff;border:1.5px solid #E5E7EB;border-radius:14px;overflow:hidden;transition:box-shadow .2s,border-color .2s}
+.bk-card:hover{box-shadow:0 6px 24px rgba(21,128,61,0.1);border-color:#BBF7D0}
+
+/* Tab button */
+.tab-btn{flex:0 0 auto;padding:9px 22px;border-radius:10px;border:1.5px solid;font-family:'Bebas Neue',cursive;font-size:15px;letter-spacing:1.5px;cursor:pointer;transition:all .18s;white-space:nowrap}
+
+/* Filter btn */
+.flt-btn{padding:9px 14px;border-radius:8px;border:1.5px solid;font-size:12px;font-weight:700;cursor:pointer;transition:all .15s;white-space:nowrap}
+
+/* Login card */
+.login-card{background:#fff;border:1.5px solid #BBF7D0;border-radius:22px;padding:44px 40px;box-shadow:0 24px 64px rgba(21,128,61,0.12)}
+@media(max-width:480px){.login-card{padding:32px 22px}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+const PHONE = "8552893927";
+
+function formatDate(d) { return d.toISOString().split("T")[0]; }
+function getToday() { return formatDate(new Date()); }
+function isWeekend(ds) { const d = new Date(ds).getDay(); return d === 0 || d === 6; }
+function getDayName(ds) {
+  const d = new Date(ds);
+  const dd = String(d.getDate()).padStart(2,"0");
+  const mm = String(d.getMonth()+1).padStart(2,"0");
+  const yyyy = d.getFullYear();
+  const weekday = d.toLocaleDateString("en-IN", { weekday:"long" });
+  return `${weekday}, ${dd}/${mm}/${yyyy}`;
+}
+function getSlotHour(s) {
+  const m = s.match(/^(\d+):00\s(AM|PM)/);
+  if (!m) return 5;
+  let h = parseInt(m[1]);
+  if (m[2]==="PM" && h!==12) h+=12;
+  if (m[2]==="AM" && h===12) h=0;
+  return h;
+}
+function getSlotPrice(slot, date) {
+  const h = getSlotHour(slot);
+  const weekend = isWeekend(date);
+  return h < 17 ? (weekend ? 600 : 500) : (weekend ? 800 : 700);
+}
+
+const ALL_SLOTS = [];
+for (let h = 5; h < 23; h++) {
+  const p1 = h < 12 ? "AM" : "PM";
+  const d1 = h <= 12 ? h : h - 12;
+  const h2 = h + 1;
+  const p2 = h2 <= 12 ? (h2 < 12 ? "AM" : "PM") : "PM";
+  const d2 = h2 <= 12 ? h2 : h2 - 12;
+  ALL_SLOTS.push(`${String(d1).padStart(2,"0")}:00 ${p1} – ${String(d2).padStart(2,"0")}:00 ${p2}`);
+}
+
+const WA_ICON = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+  </svg>
+);
+
+const CALL_ICON = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M6.62 10.79c1.44 2.83 3.76 5.14 6.59 6.59l2.2-2.2c.27-.27.67-.36 1.02-.24 1.12.37 2.33.57 3.57.57.55 0 1 .45 1 1V20c0 .55-.45 1-1 1-9.39 0-17-7.61-17-17 0-.55.45-1 1-1h3.5c.55 0 1 .45 1 1 0 1.25.2 2.45.57 3.57.11.35.03.74-.25 1.02l-2.2 2.2z"/>
+  </svg>
+);
+
+function getTotalAmount(b) {
+  if (b.status === "Free (Coupon)") return 0;
+  if (b.hours && b.slot && b.date) return getSlotPrice(b.slot, b.date) * b.hours;
+  return b.amount || 0;
+}
+
+function getDuration(b) {
+  if (b.hours) return b.hours + " hr" + (b.hours > 1 ? "s" : "");
+  if (b.selectedSlots && b.selectedSlots.length) return b.selectedSlots.length + " hr" + (b.selectedSlots.length > 1 ? "s" : "");
+  return "1 hr";
+}
+
+function getEndTime(b) {
+  if (b.selectedSlots && b.selectedSlots.length > 0) {
+    return b.selectedSlots[b.selectedSlots.length-1]?.split("–")[1]?.trim() || "";
+  }
+  return b.slot?.split("–")[1]?.trim() || "";
+}
+
+function getStartTime(b) { return b.slot?.split("–")[0]?.trim() || b.slot || ""; }
+
+function getTotalRevenueDisplay(list) {
+  return list.reduce((sum, b) => {
+    if (b.hours && b.slot && b.date) return sum + getSlotPrice(b.slot, b.date) * b.hours;
+    return sum + (Number(b.amount) || 0);
+  }, 0);
+}
+
+const statusColors = {
+  "Pending Confirmation": { bg:"#FEF9C3", border:"#FDE047", text:"#854D0E" },
+  "Confirmed":            { bg:"#DCFCE7", border:"#86EFAC", text:"#15803D" },
+  "Paid":                 { bg:"#DCFCE7", border:"#86EFAC", text:"#15803D" },
+  "Cancelled":            { bg:"#FEE2E2", border:"#FECACA", text:"#DC2626" },
+  "Completed":            { bg:"#DBEAFE", border:"#93C5FD", text:"#1D4ED8" },
+  "Free (Coupon)":        { bg:"#F3E8FF", border:"#C084FC", text:"#7C3AED" },
+};
+
+/* ─── LOGIN SCREEN ─── */
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [appConfig, setAppConfig] = useState(null);
+  const [showPw, setShowPw] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => {
+      try {
+        window.db.ref("appConfig").once("value", snap => {
+          const cfg = snap.val() || {};
+          setAppConfig(cfg);
+        });
+      } catch(e) {}
+    }, 300);
+    return () => clearTimeout(t);
+  }, []);
+
+  const handleLogin = () => {
+    if (!appConfig) { setError(true); return; }
+    setLoading(true);
+    setTimeout(() => {
+      const correctUser = "admin";
+      const correctPass = String(appConfig.adminPin || "").trim();
+      if (username.trim() === correctUser && password.trim() === correctPass) {
+        setError(false);
+        onLogin(appConfig);
+      } else {
+        setError(true);
+        setPassword("");
+      }
+      setLoading(false);
+    }, 600);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", background:"linear-gradient(145deg,#f0fdf4 0%,#dcfce7 55%,#f0fdf4 100%)", padding:20 }}>
+      {/* Background grid */}
+      <div style={{ position:"fixed", inset:0, backgroundImage:"linear-gradient(rgba(21,128,61,0.045) 1px,transparent 1px),linear-gradient(90deg,rgba(21,128,61,0.045) 1px,transparent 1px)", backgroundSize:"40px 40px", pointerEvents:"none" }}/>
+
+      <div className="fadeIn" style={{ width:"100%", maxWidth:420, position:"relative" }}>
+        <div className="login-card">
+          {/* Logo */}
+          <div style={{ textAlign:"center", marginBottom:34 }}>
+            <div style={{ width:68, height:68, background:"linear-gradient(135deg,#15803D,#16A34A)", clipPath:"polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:30, margin:"0 auto 16px", boxShadow:"0 8px 24px rgba(21,128,61,0.3)" }}>⚽</div>
+            <div className="bb" style={{ fontSize:38, color:"#15803D", lineHeight:1 }}>TURF 28</div>
+            <div style={{ fontSize:11, color:"#9CA3AF", letterSpacing:3, textTransform:"uppercase", marginTop:5 }}>Admin Portal · Vijayapura</div>
+          </div>
+
+          {/* Divider */}
+          <div style={{ height:1, background:"linear-gradient(90deg,transparent,#BBF7D0,transparent)", marginBottom:28 }}/>
+
+          {/* Form */}
+          <div style={{ marginBottom:16 }}>
+            <label className="lbl">Username</label>
+            <div style={{ position:"relative" }}>
+              <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>👤</span>
+              <input className="inp" type="text" placeholder="Enter username" value={username}
+                onChange={e=>{setUsername(e.target.value);setError(false)}}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                style={{ paddingLeft:40, borderColor: error ? "#ef4444" : "#D1FAE5" }}
+              />
+            </div>
+          </div>
+          <div style={{ marginBottom:26, position:"relative" }}>
+            <label className="lbl">Password / PIN</label>
+            <div style={{ position:"relative" }}>
+              <span style={{ position:"absolute", left:13, top:"50%", transform:"translateY(-50%)", fontSize:16, pointerEvents:"none" }}>🔑</span>
+              <input className="inp" type={showPw?"text":"password"} placeholder="Enter password" value={password}
+                onChange={e=>{setPassword(e.target.value);setError(false)}}
+                onKeyDown={e=>e.key==="Enter"&&handleLogin()}
+                style={{ paddingLeft:40, borderColor: error ? "#ef4444" : "#D1FAE5", paddingRight:46 }}
+              />
+              <button onClick={()=>setShowPw(!showPw)}
+                style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", background:"none", border:"none", cursor:"pointer", fontSize:18, color:"#9CA3AF", padding:0, lineHeight:1 }}>
+                {showPw ? "🙈" : "👁️"}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <div style={{ background:"#FEF2F2", border:"1px solid #FECACA", borderRadius:9, padding:"11px 15px", marginBottom:18, display:"flex", alignItems:"center", gap:9 }}>
+              <span style={{ fontSize:17 }}>⚠️</span>
+              <span style={{ fontSize:13, color:"#DC2626", fontWeight:600 }}>Invalid username or password. Please try again.</span>
+            </div>
+          )}
+
+          <button onClick={handleLogin} disabled={loading || !username || !password}
+            style={{ width:"100%", padding:"15px", background: loading ? "#86EFAC" : "linear-gradient(135deg,#15803D,#16A34A)", color: loading ? "#15803D" : "#fff", border:"none", borderRadius:11, fontFamily:"'Bebas Neue',cursive", fontSize:20, letterSpacing:2.5, cursor: loading ? "not-allowed" : "pointer", transition:"all .2s", display:"flex", alignItems:"center", justifyContent:"center", gap:8, boxShadow: loading ? "none" : "0 4px 18px rgba(21,128,61,0.35)" }}>
+            {loading ? (
+              <><span style={{ display:"inline-block", width:18, height:18, border:"2.5px solid #15803D", borderTopColor:"transparent", borderRadius:"50%", animation:"spin .8s linear infinite" }}/> VERIFYING...</>
+            ) : "🔐 LOGIN TO ADMIN"}
+          </button>
+
+          <div style={{ textAlign:"center", marginTop:20 }}>
+            <a href="/" style={{ fontSize:12, color:"#9CA3AF", textDecoration:"none", transition:"color .2s" }}
+              onMouseEnter={e=>e.currentTarget.style.color="#15803D"}
+              onMouseLeave={e=>e.currentTarget.style.color="#9CA3AF"}>
+              ← Back to Turf 28 Website
+            </a>
+          </div>
+        </div>
+
+        {/* Security note */}
+        <div style={{ textAlign:"center", marginTop:14, fontSize:11, color:"#9CA3AF" }}>
+          🔒 Secure admin access · Turf 28 Sports Arena
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── ADMIN DASHBOARD ─── */
+function AdminDashboard({ appConfig, onLogout }) {
+  const [tab, setTab] = useState("bookings");
+  const [history, setHistory] = useState([]);
+  const [bookings, setBookings] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [adminDate, setAdminDate] = useState(getToday());
+  const [histFilter, setHistFilter] = useState("day");
+  const [sportFilter, setSportFilter] = useState("all");
+  const [expandedCard, setExpandedCard] = useState(null);
+  const [statusMap, setStatusMap] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
+  const [lastRefresh, setLastRefresh] = useState(new Date());
+
+  useEffect(() => {
+    setLoading(true);
+    try {
+      const bRef = window.db.ref("bookedSlots");
+      bRef.on("value", snap => {
+        setBookings(snap.val() || {});
+        setLoading(false);
+        setLastRefresh(new Date());
+      });
+      const hRef = window.db.ref("bookingHistory");
+      hRef.on("value", snap => {
+        const data = snap.val();
+        if (data) {
+          const arr = Array.isArray(data) ? data : Object.values(data);
+          setHistory(arr);
+        } else {
+          setHistory([]);
+        }
+      });
+    } catch(e) {
+      console.warn("FB error:", e);
+      setLoading(false);
+    }
+  }, []);
+
+  const bookedFor = (sport, date) => {
+    return (bookings[date]?.[sport]) || [];
+  };
+
+  const releaseSlot = (sport, date, slot) => {
+    setBookings(prev => {
+      const updated = JSON.parse(JSON.stringify(prev || {}));
+      if (updated[date]) {
+        ["cricket","football"].forEach(sp => {
+          if (updated[date][sp]) updated[date][sp] = updated[date][sp].filter(s => s !== slot);
+        });
+      }
+      return updated;
+    });
+    window.db.ref("bookedSlots").once("value", snap => {
+      const current = snap.val() || {};
+      if (!current[date]) current[date] = { cricket: [], football: [] };
+      ["cricket","football"].forEach(sp => {
+        if (current[date][sp]) current[date][sp] = current[date][sp].filter(s => s !== slot);
+      });
+      window.db.ref("bookedSlots").set(current);
+    });
+    window.db.ref("bookingHistory").once("value", snap => {
+      const data = snap.val();
+      if (!data) return;
+      Object.entries(data).forEach(([key, val]) => {
+        if (val.sport===sport && val.date===date && val.slot===slot) {
+          window.db.ref("bookingHistory/"+key).remove();
+        }
+      });
+    });
+  };
+
+  const updateBookingStatus = (bookedAt, newStatus) => {
+    setStatusMap(prev => ({ ...prev, [bookedAt]: newStatus }));
+    window.db.ref("bookingHistory").once("value", snap => {
+      const data = snap.val();
+      if (!data) return;
+      Object.entries(data).forEach(([key, val]) => {
+        if (val.bookedAt === bookedAt) {
+          window.db.ref("bookingHistory/" + key + "/status").set(newStatus);
+        }
+      });
+    });
+  };
+
+  const filterHistory = () => {
+    const now = new Date();
+    return history.filter(b => {
+      const d = new Date(b.date);
+      let passTime = true;
+      if (histFilter==="day") passTime = b.date===getToday();
+      else if (histFilter==="week") { const wa=new Date(now); wa.setDate(now.getDate()-7); passTime = d>=wa; }
+      else if (histFilter==="month") passTime = d.getMonth()===now.getMonth()&&d.getFullYear()===now.getFullYear();
+      let passSport = sportFilter==="all" || b.sport===sportFilter;
+      let passSearch = !searchQuery || b.name?.toLowerCase().includes(searchQuery.toLowerCase()) || b.phone?.includes(searchQuery);
+      return passTime && passSport && passSearch;
+    });
+  };
+
+  const filteredHistory = filterHistory();
+  const cricketCount = filteredHistory.filter(b=>b.sport==="cricket").length;
+  const footballCount = filteredHistory.filter(b=>b.sport==="football").length;
+  const pendingCount = filteredHistory.filter(b=>(statusMap[b.bookedAt]||b.status)==="Pending Confirmation").length;
+  const revenue = getTotalRevenueDisplay(filteredHistory);
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#f0fdf4" }}>
+      {/* TOP NAV */}
+      <nav style={{ position:"sticky", top:0, zIndex:100, background:"rgba(255,255,255,0.97)", backdropFilter:"blur(16px)", borderBottom:"1px solid #D1FAE5", boxShadow:"0 2px 16px rgba(0,0,0,0.06)" }}>
+        <div style={{ maxWidth:1200, margin:"0 auto", padding:"0 20px", height:64, display:"flex", alignItems:"center", justifyContent:"space-between", gap:12 }}>
+          {/* Logo */}
+          <div style={{ display:"flex", alignItems:"center", gap:11 }}>
+            <div style={{ width:38, height:38, background:"linear-gradient(135deg,#15803D,#16A34A)", clipPath:"polygon(50% 0%,100% 25%,100% 75%,50% 100%,0% 75%,0% 25%)", display:"flex", alignItems:"center", justifyContent:"center", fontSize:17, boxShadow:"0 3px 10px rgba(21,128,61,0.3)" }}>⚙️</div>
+            <div>
+              <div className="bb" style={{ fontSize:20, color:"#15803D", lineHeight:1 }}>TURF 28 ADMIN</div>
+              <div style={{ fontSize:9, color:"#9CA3AF", letterSpacing:2, textTransform:"uppercase" }}>Management Portal</div>
+            </div>
+          </div>
+
+          {/* Right side */}
+          <div style={{ display:"flex", alignItems:"center", gap:10 }}>
+            {/* Live indicator */}
+            <div style={{ display:"flex", alignItems:"center", gap:6, padding:"5px 13px", background:"rgba(21,128,61,0.08)", border:"1px solid rgba(21,128,61,0.2)", borderRadius:20 }}>
+              <span style={{ width:7, height:7, borderRadius:"50%", background:"#16A34A", animation:"blink 1.4s infinite", display:"inline-block" }}/>
+              <span style={{ fontSize:10, color:"#15803D", fontWeight:700, letterSpacing:1 }}>LIVE</span>
+            </div>
+            <a href="/" style={{ fontSize:12, color:"#6B7280", textDecoration:"none", fontWeight:600, padding:"7px 14px", border:"1.5px solid #D1FAE5", borderRadius:8, transition:"all .2s", display:"flex", alignItems:"center", gap:5 }}
+              onMouseEnter={e=>{e.currentTarget.style.borderColor="#15803D";e.currentTarget.style.color="#15803D";e.currentTarget.style.background="#F0FDF4"}}
+              onMouseLeave={e=>{e.currentTarget.style.borderColor="#D1FAE5";e.currentTarget.style.color="#6B7280";e.currentTarget.style.background="transparent"}}>
+              🏟️ Website
+            </a>
+            <button onClick={onLogout}
+              style={{ fontSize:12, fontWeight:700, padding:"7px 16px", background:"#FEF2F2", border:"1.5px solid #FECACA", color:"#DC2626", borderRadius:8, cursor:"pointer", transition:"all .2s", display:"flex", alignItems:"center", gap:5 }}
+              onMouseEnter={e=>{e.currentTarget.style.background="#FEE2E2"}}
+              onMouseLeave={e=>{e.currentTarget.style.background="#FEF2F2"}}>
+              🚪 Logout
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* MAIN CONTENT */}
+      <div style={{ maxWidth:1200, margin:"0 auto", padding:"24px 20px" }}>
+        {loading ? (
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"center", minHeight:340, flexDirection:"column", gap:18 }}>
+            <div style={{ width:48, height:48, border:"3.5px solid #D1FAE5", borderTopColor:"#15803D", borderRadius:"50%", animation:"spin .9s linear infinite" }}/>
+            <div style={{ textAlign:"center" }}>
+              <div style={{ color:"#15803D", fontSize:15, fontWeight:700, letterSpacing:0.5 }}>Loading data from Firebase...</div>
+              <div style={{ color:"#9CA3AF", fontSize:12, marginTop:4 }}>Please wait a moment</div>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* TABS */}
+            <div style={{ display:"flex", gap:8, marginBottom:28, overflowX:"auto", paddingBottom:4, alignItems:"center" }}>
+              {[["bookings","📋","Bookings"],["slots","🔒","Slots"],["stats","📊","Stats"]].map(([t,icon,label])=>(
+                <button key={t} onClick={()=>setTab(t)} className="tab-btn"
+                  style={{
+                    borderColor:tab===t?"#15803D":"#D1FAE5",
+                    background:tab===t?"#15803D":"#fff",
+                    color:tab===t?"#fff":"#6B7280",
+                    boxShadow:tab===t?"0 4px 16px rgba(21,128,61,0.25)":"none" }}>
+                  {icon} {label}
+                </button>
+              ))}
+              <div style={{ marginLeft:"auto", display:"flex", alignItems:"center", gap:6, fontSize:11, color:"#9CA3AF", flexShrink:0, padding:"6px 12px", background:"#fff", border:"1px solid #E5E7EB", borderRadius:8 }}>
+                🕐 Updated: {lastRefresh.toLocaleTimeString("en-IN", {hour:"2-digit",minute:"2-digit"})}
+              </div>
+            </div>
+
+            {/* ── BOOKINGS TAB ── */}
+            {tab==="bookings" && (
+              <div className="fadeIn">
+                {/* Filters row */}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr auto auto", gap:12, marginBottom:18, alignItems:"end" }}>
+                  <div>
+                    <label className="lbl">Search Bookings</label>
+                    <div style={{ position:"relative" }}>
+                      <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", fontSize:14, pointerEvents:"none" }}>🔍</span>
+                      <input className="inp" placeholder="Name or phone number..." value={searchQuery}
+                        onChange={e=>setSearchQuery(e.target.value)} style={{ fontSize:13, paddingLeft:36 }}/>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="lbl">Time Period</label>
+                    <div style={{ display:"flex", gap:5 }}>
+                      {[["day","Today"],["week","Week"],["month","Month"],["all","All"]].map(([f,l])=>(
+                        <button key={f} onClick={()=>setHistFilter(f)} className="flt-btn"
+                          style={{
+                            borderColor:histFilter===f?"#15803D":"#D1FAE5",
+                            background:histFilter===f?"#15803D":"#fff",
+                            color:histFilter===f?"#fff":"#6B7280" }}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="lbl">Sport</label>
+                    <div style={{ display:"flex", gap:5 }}>
+                      {[["all","All"],["cricket","🏏"],["football","⚽"]].map(([f,l])=>(
+                        <button key={f} onClick={()=>setSportFilter(f)} className="flt-btn"
+                          style={{
+                            borderColor:sportFilter===f?"#15803D":"#D1FAE5",
+                            background:sportFilter===f?"#15803D":"#fff",
+                            color:sportFilter===f?"#fff":"#6B7280" }}>
+                          {l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Summary Cards */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))", gap:10, marginBottom:22 }}>
+                  {[
+                    { icon:"📋", label:"Total", val:filteredHistory.length, col:"#15803D", bg:"rgba(21,128,61,0.06)", bdr:"rgba(21,128,61,0.18)" },
+                    { icon:"💰", label:"Revenue", val:"₹"+revenue, col:"#D97706", bg:"rgba(217,119,6,0.06)", bdr:"rgba(217,119,6,0.18)" },
+                    { icon:"🏏", label:"Cricket", val:cricketCount, col:"#15803D", bg:"#F0FDF4", bdr:"#BBF7D0" },
+                    { icon:"⚽", label:"Football", val:footballCount, col:"#7C3AED", bg:"rgba(124,58,237,0.05)", bdr:"rgba(124,58,237,0.18)" },
+                    { icon:"⏳", label:"Pending", val:pendingCount, col:"#92400E", bg:"#FFFBEB", bdr:"#FDE68A" },
+                  ].map(s=>(
+                    <div key={s.label} className="stat-card" style={{ background:s.bg, border:"1px solid "+s.bdr, borderRadius:13, padding:"16px 14px", textAlign:"center" }}>
+                      <div style={{ fontSize:22, marginBottom:6 }}>{s.icon}</div>
+                      <div className="bb" style={{ fontSize:30, color:s.col, lineHeight:1 }}>{s.val}</div>
+                      <div style={{ fontSize:10, color:"#9CA3AF", marginTop:5, letterSpacing:0.5, textTransform:"uppercase", fontWeight:600 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Booking Cards */}
+                {filteredHistory.length===0 ? (
+                  <div style={{ textAlign:"center", padding:"56px 16px", color:"#6B7280", fontSize:14, background:"#fff", borderRadius:16, border:"1.5px dashed #D1FAE5" }}>
+                    <div style={{ fontSize:48, marginBottom:14 }}>📭</div>
+                    <div style={{ fontWeight:700, fontSize:16, color:"#374151" }}>No bookings found</div>
+                    <div style={{ fontSize:13, marginTop:6, color:"#9CA3AF" }}>Try changing the filters or select a different date</div>
+                  </div>
+                ) : (
+                  <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))", gap:14 }}>
+                    {[...filteredHistory].reverse().map((b,i)=>{
+                      const cardKey = b.bookedAt ? b.bookedAt + (b.phone||"") : String(i);
+                      const isOpen = expandedCard===cardKey;
+                      const status = statusMap[b.bookedAt] || b.status || "Pending Confirmation";
+                      const sc = statusColors[status] || statusColors["Pending Confirmation"];
+                      const totalAmt = getTotalAmount(b);
+
+                      return (
+                        <div key={cardKey} className="bk-card">
+                          {/* Card Header */}
+                          <div onClick={()=>setExpandedCard(isOpen?null:cardKey)}
+                            style={{ padding:"16px 18px", cursor:"pointer", display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                            <div style={{ flex:1, minWidth:0 }}>
+                              <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:7, flexWrap:"wrap" }}>
+                                <span className="bb" style={{ fontSize:15, color:b.sport==="cricket"?"#15803D":"#D97706" }}>
+                                  {b.sport==="cricket"?"🏏 Cricket":"⚽ Football"}
+                                </span>
+                                <span style={{ fontSize:10, padding:"3px 10px", borderRadius:20, background:sc.bg, border:"1px solid "+sc.border, color:sc.text, fontWeight:700, letterSpacing:0.3 }}>
+                                  {status}
+                                </span>
+                              </div>
+                              <div style={{ fontSize:14, fontWeight:700, color:"#111827" }}>👤 {b.name}</div>
+                              <div style={{ fontSize:12, color:"#6B7280", marginTop:3 }}>📞 {b.phone}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>📅 {getDayName(b.date)}</div>
+                            </div>
+                            <div style={{ textAlign:"right", flexShrink:0, marginLeft:12 }}>
+                              <div className="bb" style={{ fontSize:28, color:"#D97706", lineHeight:1 }}>₹{totalAmt}</div>
+                              <div style={{ fontSize:11, color:"#9CA3AF", marginTop:4 }}>{getDuration(b)}</div>
+                              <div style={{ fontSize:11, color:"#D1FAE5", marginTop:2 }}>{isOpen?"▲":"▼"}</div>
+                            </div>
+                          </div>
+
+                          {/* Expanded Details */}
+                          {isOpen && (
+                            <div style={{ borderTop:"1px solid #F0FDF4", padding:"16px 18px", background:"#FAFFFE" }}>
+                              {/* Details Table */}
+                              <div style={{ marginBottom:16 }}>
+                                <div className="bb" style={{ fontSize:10, color:"#9CA3AF", letterSpacing:2.5, marginBottom:10 }}>BOOKING DETAILS</div>
+                                <div style={{ background:"#fff", borderRadius:11, border:"1px solid #E5E7EB", overflow:"hidden" }}>
+                                  {[
+                                    ["🏷️ Sport", b.sport==="cricket"?"🏏 Cricket Turf":"⚽ Football Turf"],
+                                    ["📅 Date", getDayName(b.date)],
+                                    ["⏰ Start Time", getStartTime(b)],
+                                    ["⏱️ End Time", getEndTime(b)],
+                                    ["⌛ Duration", getDuration(b)],
+                                    ["💰 Amount", "₹"+totalAmt],
+                                    ["👤 Name", b.name],
+                                    ["📞 Phone", b.phone],
+                                    ["👥 Players", b.players && b.players!=="-" ? b.players : "—"],
+                                    ["🕐 Booked At", b.bookedAt || "—"],
+                                    ["🆔 Payment ID", b.paymentId || "—"],
+                                    ["📌 Status", status],
+                                  ].map(([k,v])=>(
+                                    <div key={k} style={{ display:"flex", justifyContent:"space-between", padding:"9px 14px", borderBottom:"1px solid #F9FAFB", gap:8 }}>
+                                      <span style={{ fontSize:11, color:"#6B7280", fontWeight:600, flexShrink:0 }}>{k}</span>
+                                      <span style={{ fontSize:11, color:"#111827", fontWeight:700, textAlign:"right", wordBreak:"break-all" }}>{v}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Status Update */}
+                              <div style={{ marginBottom:14 }}>
+                                <div className="bb" style={{ fontSize:10, color:"#9CA3AF", letterSpacing:2.5, marginBottom:9 }}>UPDATE STATUS</div>
+                                <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                                  {["Confirmed","Pending Confirmation","Completed","Cancelled"].map(s=>(
+                                    <button key={s} onClick={()=>updateBookingStatus(b.bookedAt, s)}
+                                      style={{ padding:"7px 13px", borderRadius:8, border:"1.5px solid", fontSize:11, fontWeight:700, cursor:"pointer", transition:"all .15s",
+                                        borderColor:status===s?(statusColors[s]?.border||"#BBF7D0"):"#E5E7EB",
+                                        background:status===s?(statusColors[s]?.bg||"#F9FAFB"):"#fff",
+                                        color:status===s?(statusColors[s]?.text||"#111827"):"#9CA3AF" }}>
+                                      {s==="Confirmed"?"✅ Confirmed":s==="Pending Confirmation"?"⏳ Pending":s==="Completed"?"🏁 Completed":"❌ Cancelled"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div style={{ display:"flex", gap:8 }}>
+                                <a href={"https://wa.me/91"+b.phone} target="_blank" rel="noopener noreferrer"
+                                  style={{ flex:1, padding:"10px", background:"#25D366", color:"#fff", border:"none", borderRadius:9, cursor:"pointer", fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:5, textDecoration:"none" }}>
+                                  <WA_ICON/> WhatsApp
+                                </a>
+                                <a href={"tel:+91"+b.phone}
+                                  style={{ flex:1, padding:"10px", background:"#3b82f6", color:"#fff", border:"none", borderRadius:9, cursor:"pointer", fontSize:12, fontWeight:700, display:"flex", alignItems:"center", justifyContent:"center", gap:5, textDecoration:"none" }}>
+                                  <CALL_ICON/> Call
+                                </a>
+                                <button onClick={()=>{ if(window.confirm("Are you sure you want to release this slot?")) { releaseSlot(b.sport,b.date,b.slot); setExpandedCard(null); }}}
+                                  style={{ flex:1, padding:"10px", background:"#FEF2F2", color:"#DC2626", border:"1px solid #FECACA", borderRadius:9, cursor:"pointer", fontSize:12, fontWeight:700 }}>
+                                  🗑️ Release Slot
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── SLOTS TAB ── */}
+            {tab==="slots" && (
+              <div className="fadeIn">
+                <div style={{ marginBottom:18 }}>
+                  <label className="lbl">Select Date</label>
+                  <div style={{ position:"relative", display:"inline-block" }}>
+                    <div style={{ background:"#fff", border:"1.5px solid #BBF7D0", borderRadius:10, padding:"12px 18px", minWidth:190, display:"flex", alignItems:"center", gap:10, cursor:"pointer" }}>
+                      <span style={{ fontSize:15, color:"#15803D", fontWeight:700, fontFamily:"monospace" }}>
+                        {(()=>{ const [y,m,d]=adminDate.split("-"); return d+"/"+m+"/"+y; })()}
+                      </span>
+                      <span style={{ fontSize:18 }}>📅</span>
+                    </div>
+                    <input type="date" value={adminDate} onChange={e=>setAdminDate(e.target.value)}
+                      style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", width:"100%", height:"100%" }}/>
+                  </div>
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))", gap:20 }}>
+                  {["cricket","football"].map(sport=>{
+                    const blocked = bookedFor(sport, adminDate);
+                    return (
+                      <div key={sport} style={{ background:"#fff", border:"1.5px solid #BBF7D0", borderRadius:14, padding:"20px", boxShadow:"0 2px 10px rgba(0,0,0,0.04)" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:14 }}>
+                          <div className="bb" style={{ fontSize:20, color:sport==="cricket"?"#15803D":"#D97706" }}>
+                            {sport==="cricket"?"🏏 Cricket":"⚽ Football"}
+                          </div>
+                          <span style={{ fontSize:12, padding:"4px 12px", borderRadius:20, background:"#FEF9C3", border:"1px solid #FDE047", color:"#854D0E", fontWeight:700 }}>
+                            {blocked.length} blocked
+                          </span>
+                        </div>
+
+                        {blocked.length===0 ? (
+                          <div style={{ fontSize:13, color:"#9CA3AF", padding:"20px", background:"#F9FAFB", borderRadius:10, textAlign:"center" }}>
+                            <div style={{ fontSize:28, marginBottom:6 }}>✅</div>
+                            No slots blocked for this date
+                          </div>
+                        ) : (
+                          <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                            {blocked.map(slot=>{
+                              const bm = history.find(h=>h.sport===sport&&h.date===adminDate&&h.slot===slot);
+                              return (
+                                <div key={slot} style={{ background:"#FEF9C3", border:"1px solid #FDE68A", borderRadius:10, padding:"12px 14px" }}>
+                                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+                                    <div>
+                                      <div style={{ fontSize:14, color:"#111827", fontWeight:700 }}>⏰ {slot}</div>
+                                      <div style={{ fontSize:11, color:"#D97706", marginTop:2 }}>₹{getSlotPrice(slot,adminDate)}/hr</div>
+                                      {bm && (
+                                        <div style={{ fontSize:11, color:"#6B7280", marginTop:4 }}>
+                                          👤 {bm.name} · 📞 {bm.phone}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <button onClick={()=>{ if(window.confirm("Release slot: "+slot+"?")) releaseSlot(sport,adminDate,slot); }}
+                                      style={{ padding:"6px 14px", background:"#FEF2F2", border:"1px solid #FECACA", color:"#DC2626", borderRadius:7, cursor:"pointer", fontSize:12, fontWeight:700 }}>
+                                      Release
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* All Slots Overview */}
+                        <div style={{ marginTop:16 }}>
+                          <div className="bb" style={{ fontSize:10, color:"#9CA3AF", letterSpacing:2, marginBottom:8 }}>ALL SLOTS — {(()=>{ const [y,m,d]=adminDate.split("-"); return d+"/"+m+"/"+y; })()}</div>
+                          <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(110px,1fr))", gap:6 }}>
+                            {ALL_SLOTS.map(slot=>{
+                              const isBlocked = blocked.includes(slot);
+                              return (
+                                <div key={slot} style={{ padding:"8px 6px", borderRadius:7, textAlign:"center", fontSize:10, fontWeight:600,
+                                  background: isBlocked ? "#FEF2F2" : "#DCFCE7",
+                                  border: isBlocked ? "1px solid #FECACA" : "1px solid #86EFAC",
+                                  color: isBlocked ? "#DC2626" : "#15803D" }}>
+                                  {slot.split("–")[0].trim()}
+                                  <div style={{ fontSize:9, marginTop:2 }}>{isBlocked?"🔴 Blocked":"🟢 Free"}</div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div style={{ marginTop:16, background:"rgba(217,119,6,0.06)", border:"1px solid rgba(217,119,6,0.2)", borderRadius:10, padding:"12px 16px" }}>
+                  <p style={{ fontSize:12, color:"#4B5563", lineHeight:1.7 }}>💡 If a payment was not received, click "Release" — the slot will be freed immediately and available for others to book.</p>
+                </div>
+              </div>
+            )}
+
+            {/* ── STATS TAB ── */}
+            {tab==="stats" && (
+              <div className="fadeIn">
+                {/* Time Filter */}
+                <div style={{ display:"flex", gap:8, marginBottom:22 }}>
+                  {[["day","Today"],["week","This Week"],["month","This Month"],["all","All Time"]].map(([f,l])=>(
+                    <button key={f} onClick={()=>setHistFilter(f)}
+                      style={{ flex:1, padding:"10px 6px", borderRadius:9, border:"1.5px solid", fontSize:13, fontFamily:"'Bebas Neue',cursive", letterSpacing:1, cursor:"pointer", transition:"all .15s",
+                        borderColor:histFilter===f?"#15803D":"#D1FAE5",
+                        background:histFilter===f?"#15803D":"#fff",
+                        color:histFilter===f?"#fff":"#6B7280" }}>
+                      {l}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Big Stats Grid */}
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(155px,1fr))", gap:14, marginBottom:26 }}>
+                  {[
+                    { icon:"📋", label:"Total Bookings", val:filteredHistory.length, col:"#15803D", bg:"rgba(21,128,61,0.06)", bdr:"rgba(21,128,61,0.18)" },
+                    { icon:"💰", label:"Total Revenue", val:"₹"+revenue, col:"#D97706", bg:"rgba(217,119,6,0.06)", bdr:"rgba(217,119,6,0.18)" },
+                    { icon:"🏏", label:"Cricket Bookings", val:cricketCount, col:"#15803D", bg:"#F0FDF4", bdr:"#BBF7D0" },
+                    { icon:"⚽", label:"Football Bookings", val:footballCount, col:"#7C3AED", bg:"rgba(124,58,237,0.05)", bdr:"rgba(124,58,237,0.18)" },
+                    { icon:"⏳", label:"Pending", val:pendingCount, col:"#92400E", bg:"#FFFBEB", bdr:"#FDE68A" },
+                    { icon:"✅", label:"Confirmed", val:filteredHistory.filter(b=>(statusMap[b.bookedAt]||b.status)==="Confirmed").length, col:"#15803D", bg:"#F0FDF4", bdr:"#BBF7D0" },
+                  ].map(s=>(
+                    <div key={s.label} className="stat-card" style={{ background:s.bg, border:"1px solid "+s.bdr, borderRadius:14, padding:"22px 16px" }}>
+                      <div style={{ fontSize:30, marginBottom:10 }}>{s.icon}</div>
+                      <div className="bb" style={{ fontSize:38, color:s.col, lineHeight:1 }}>{s.val}</div>
+                      <div style={{ fontSize:11, color:"#9CA3AF", marginTop:7, letterSpacing:0.5, textTransform:"uppercase", fontWeight:600 }}>{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))", gap:16, marginBottom:16 }}>
+                {/* Revenue Breakdown */}
+                <div style={{ background:"#fff", border:"1.5px solid #D1FAE5", borderRadius:16, padding:"22px" }}>
+                  <div className="bb" style={{ fontSize:13, color:"#15803D", letterSpacing:2.5, marginBottom:16 }}>SPORT-WISE REVENUE</div>
+                  {[
+                    { sport:"cricket", label:"🏏 Cricket", col:"#15803D", bg:"rgba(21,128,61,0.08)" },
+                    { sport:"football", label:"⚽ Football", col:"#D97706", bg:"rgba(217,119,6,0.08)" },
+                  ].map(({ sport, label, col, bg })=>{
+                    const sportList = filteredHistory.filter(b=>b.sport===sport);
+                    const sportRev = getTotalRevenueDisplay(sportList);
+                    const pct = revenue > 0 ? Math.round((sportRev/revenue)*100) : 0;
+                    return (
+                      <div key={sport} style={{ marginBottom:16 }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", marginBottom:7 }}>
+                          <span style={{ fontSize:13, fontWeight:700, color:"#111827" }}>{label}</span>
+                          <span className="bb" style={{ fontSize:20, color:col }}>₹{sportRev} <span style={{ fontSize:11, color:"#9CA3AF" }}>({pct}%)</span></span>
+                        </div>
+                        <div style={{ height:10, background:"#F0FDF4", borderRadius:6, overflow:"hidden", border:"1px solid #D1FAE5" }}>
+                          <div style={{ height:"100%", width:pct+"%", background:col, borderRadius:6, transition:"width .6s ease" }}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Recent Activity */}
+                <div style={{ background:"#fff", border:"1.5px solid #D1FAE5", borderRadius:16, padding:"22px" }}>
+                  <div className="bb" style={{ fontSize:13, color:"#15803D", letterSpacing:2.5, marginBottom:16 }}>RECENT ACTIVITY</div>
+                  {history.length===0 ? (
+                    <div style={{ fontSize:13, color:"#9CA3AF", textAlign:"center", padding:"24px" }}>
+                      <div style={{ fontSize:32, marginBottom:8 }}>📭</div>
+                      No bookings yet
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", flexDirection:"column", gap:0 }}>
+                      {[...history].reverse().slice(0,10).map((b,i)=>{
+                        const amt = getTotalAmount(b);
+                        return (
+                          <div key={i} style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"10px 0", borderBottom:"1px solid #F3F4F6" }}>
+                            <div>
+                              <span style={{ color:b.sport==="cricket"?"#15803D":"#D97706", fontWeight:700, fontSize:13 }}>
+                                {b.sport==="cricket"?"🏏":"⚽"} {b.name}
+                              </span>
+                              <div style={{ fontSize:11, color:"#9CA3AF", marginTop:2 }}>{b.date} · {b.phone}</div>
+                            </div>
+                            <div style={{ textAlign:"right" }}>
+                              <div className="bb" style={{ fontSize:20, color:"#D97706" }}>₹{amt}</div>
+                              <div style={{ fontSize:10, color:"#9CA3AF" }}>{getDuration(b)}</div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ─── */
+function App() {
+  const [authed, setAuthed] = useState(false);
+  const [config, setConfig] = useState(null);
+
+  const handleLogin = (appConfig) => {
+    setConfig(appConfig);
+    setAuthed(true);
+    sessionStorage.setItem("t28_admin_authed", "1");
+  };
+
+  const handleLogout = () => {
+    setAuthed(false);
+    setConfig(null);
+    sessionStorage.removeItem("t28_admin_authed");
+  };
+
+  // Session check — agar same session mein already login kiya hai
+  useEffect(() => {
+    if (sessionStorage.getItem("t28_admin_authed") === "1") {
+      try {
+        window.db.ref("appConfig").once("value", snap => {
+          const cfg = snap.val() || {};
+          if (cfg.adminPin) {
+            setConfig(cfg);
+            setAuthed(true);
+          }
+        });
+      } catch(e) {}
+    }
+  }, []);
+
+  if (!authed) return <LoginScreen onLogin={handleLogin}/>;
+  return <AdminDashboard appConfig={config} onLogout={handleLogout}/>;
+}
+
+function startApp() {
+  if (window.db) {
+    const root = ReactDOM.createRoot(document.getElementById("root"));
+    root.render(<App/>);
+  } else {
+    setTimeout(startApp, 50);
+  }
+}
+startApp();
+</script>
+</body>
+</html>
