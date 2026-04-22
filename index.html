@@ -170,6 +170,11 @@ const PHONE = "8552893927";
 const WHATSAPP = `https://wa.me/91${PHONE}`;
 const CALL = `tel:+91${PHONE}`;
 
+// ✅ SLOT HOLD SYSTEM — VRL style temporary locking
+// Har browser session ka ek unique ID hoga
+const SESSION_ID = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
+const HOLD_DURATION_MS = 5 * 60 * 1000; // 5 minutes hold
+
 // Generate slots 5AM–11PM
 const ALL_SLOTS = [];
 for (let h = 5; h < 23; h++) {
@@ -699,6 +704,9 @@ function App() {
   const [adminAuth, setAdminAuth] = useState(false);
   const [adminPinError, setAdminPinError] = useState(false);
   const [fbLoading, setFbLoading] = useState(true);
+  // ✅ SLOT HOLD SYSTEM
+  const [holds, setHolds] = useState({}); // { date: { s0: {sessionId, expiresAt}, ... } }
+  const [holdSecondsLeft, setHoldSecondsLeft] = useState(null); // countdown timer
 
   useEffect(() => {
     // Clear localStorage on every load — Firebase is the only source of truth
@@ -737,6 +745,12 @@ function App() {
           setHistory([]);
         }
       }, err => console.warn("FB history err:", err));
+
+      // ✅ SLOT HOLD SYSTEM — slotHolds listener
+      const holdsRef = window.db.ref("slotHolds");
+      holdsRef.on("value", snap => {
+        setHolds(snap.val() || {});
+      }, err => console.warn("FB holds err:", err));
     } catch(e) {
       console.warn("FB init err:", e);
       clearTimeout(timeout);
@@ -761,12 +775,64 @@ function App() {
     const football = bookings[date]?.["football"] || [];
     return [...new Set([...cricket, ...football])];
   };
+
+  // ✅ SLOT HOLD HELPERS
+  // Firebase key for a slot: use its index in ALL_SLOTS (s0, s1, ...)
+  const slotKey = (slot) => `s${ALL_SLOTS.indexOf(slot)}`;
+
+  // Kya slot kisi aur session ne hold kar rakha hai (expired nahi, mera nahi)?
+  const isHeldByOther = (date, slot) => {
+    const hold = holds[date]?.[slotKey(slot)];
+    if (!hold) return false;
+    if (hold.sessionId === SESSION_ID) return false; // mera apna hold
+    if (Date.now() > hold.expiresAt) return false;   // expire ho gaya
+    return true;
+  };
+
+  // Mera apna hold hai kya is slot par?
+  const isMyHold = (date, slot) => {
+    const hold = holds[date]?.[slotKey(slot)];
+    if (!hold) return false;
+    if (hold.sessionId !== SESSION_ID) return false;
+    if (Date.now() > hold.expiresAt) return false;
+    return true;
+  };
+
+  // Slot(s) ko temporarily hold karo Firebase mein
+  const holdSlots = (date, slots) => {
+    const now = Date.now();
+    const expiresAt = now + HOLD_DURATION_MS;
+    slots.forEach(slot => {
+      window.db.ref(`slotHolds/${date}/${slotKey(slot)}`).set({
+        sessionId: SESSION_ID,
+        heldAt: now,
+        expiresAt
+      }, err => { if(err) console.warn("Hold write failed:", err); });
+    });
+    setHoldSecondsLeft(Math.floor(HOLD_DURATION_MS / 1000));
+    console.log("✅ Slots held for 10 min:", slots);
+  };
+
+  // Is session ke saare holds release karo (date ke liye)
+  const releaseMyHolds = (date) => {
+    if (!date || !holds[date]) return;
+    Object.entries(holds[date]).forEach(([key, hold]) => {
+      if (hold.sessionId === SESSION_ID) {
+        window.db.ref(`slotHolds/${date}/${key}`).remove();
+      }
+    });
+    setHoldSecondsLeft(null);
+    console.log("✅ My holds released for date:", date);
+  };
+
   const availableFor = (sport, date) => {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
+    const nowTs = Date.now();
     return ALL_SLOTS.filter(s => {
-      if (bookedFor(sport, date).includes(s)) return false; // already booked
+      if (bookedFor(sport, date).includes(s)) return false; // already permanently booked
+      if (isHeldByOther(date, s)) return false; // ✅ held by another user
       const slotHour = getSlotHour(s);
       // Hide slot if current time has passed its start (e.g. 10:01 means 10AM slot gone)
       if (date === getToday()) {
@@ -1007,19 +1073,42 @@ function App() {
         return u;
       });
 
-      // Firebase write confirm hone ke baad hi Razorpay open karo
-      window.db.ref("bookedSlots").once("value", snap => {
-        const current = snap.val() || {};
-        if (!current[_d]) current[_d] = { cricket: [], football: [] };
+      // ✅ ATOMIC TRANSACTION FIX: Read-then-write ki jagah runTransaction use karo
+      // Ye guarantee karta hai ki 2 log same time par book nahi kar sakte
+      window.db.ref("bookedSlots").transaction(current => {
+        const data = current || {};
+        // Check karo: koi bhi slot already booked toh nahi hai?
+        for (const s of _slotsToBlock) {
+          const cr = data[_d]?.["cricket"] || [];
+          const fo = data[_d]?.["football"] || [];
+          if (cr.includes(s) || fo.includes(s)) {
+            return undefined; // Transaction abort — slot already taken
+          }
+        }
+        // Safe hai — slots block karo
+        if (!data[_d]) data[_d] = { cricket: [], football: [] };
         ["cricket","football"].forEach(sp => {
-          current[_d][sp] = [...new Set([...(current[_d][sp]||[]), ..._slotsToBlock])];
+          data[_d][sp] = [...new Set([...(data[_d][sp]||[]), ..._slotsToBlock])];
         });
-        window.db.ref("bookedSlots").set(current, err => {
-          if (err) console.warn("❌ Pre-block failed:", err);
-          else console.log("✅ Slots pre-blocked — now opening Razorpay");
-          // ✅ KEY FIX: rzp.open() sirf Firebase write ke baad — guaranteed sequence
-          rzp.open();
-        });
+        return data;
+      }, (error, committed, snap) => {
+        if (error) {
+          console.warn("❌ Transaction error:", error);
+          alert("⚠️ Network error. Please try again.");
+          return;
+        }
+        if (!committed) {
+          // Slot dusre ne le liya
+          alert("⚠️ Yeh slot abhi kisi aur ne book kar liya! Kripya doosra slot chunein.");
+          // Local UI update karo — latest Firebase data se
+          if (snap) setBookings(snap.val() || {});
+          setStep(2); // Wapas slot selection par
+          return;
+        }
+        // ✅ Transaction successful — holds release karo, Razorpay open karo
+        releaseMyHolds(_slotsToBlock, _d);
+        console.log("✅ Slots atomically pre-blocked — opening Razorpay");
+        rzp.open();
       });
     } catch(err) {
       console.error("Razorpay error:", err);
@@ -1175,6 +1264,7 @@ function App() {
       if (idx >= ALL_SLOTS.length) return false;
       const s = ALL_SLOTS[idx];
       if (booked.includes(s)) return false;
+      if (isHeldByOther(date, s)) return false; // ✅ held by another user
       if (date === getToday()) {
         const sh = getSlotHour(s);
         if (sh < currentHour) return false;
@@ -1184,6 +1274,23 @@ function App() {
     return true;
   };
   const avail = booking.sport ? availableFor(booking.sport, booking.date) : [];
+
+  // ✅ HOLD COUNTDOWN TIMER — har second update karo
+  useEffect(() => {
+    if (holdSecondsLeft === null) return;
+    if (holdSecondsLeft <= 0) {
+      // Hold expire ho gaya — slot release aur reset
+      if (booking.slot) {
+        releaseMyHolds(booking.date);
+        setBooking(b => ({...b, slot: null}));
+        setHoldSecondsLeft(null);
+        alert("⏰ Your slot hold has expired (5 minutes). Please select a slot again.");
+      }
+      return;
+    }
+    const timer = setTimeout(() => setHoldSecondsLeft(s => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [holdSecondsLeft]);
 
   if (fbLoading) return (
     <div style={{ minHeight:"100vh", background:"#f0fdf4", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", gap:16 }}>
@@ -1640,7 +1747,7 @@ function App() {
                     <span>📅</span>
                   </div>
                   <input type="date" min={getToday()} max={getMaxDate()} value={booking.date}
-                    onChange={e=>setBooking(b=>({...b,date:e.target.value,slot:null,hours:1}))}
+                    onChange={e=>{ releaseMyHolds(booking.date); setBooking(b=>({...b,date:e.target.value,slot:null,hours:1})); setHoldSecondsLeft(null); }}
                     style={{ position:"absolute", inset:0, opacity:0, cursor:"pointer", width:"100%", height:"100%" }}/>
                 </div>
                 {booking.date && (
@@ -1659,7 +1766,7 @@ function App() {
                 <div style={{ position:"relative" }}>
                   <select
                     value={booking.hours}
-                    onChange={e=>setBooking(b=>({...b,hours:Number(e.target.value),slot:null}))}
+                    onChange={e=>{ releaseMyHolds(booking.date); setBooking(b=>({...b,hours:Number(e.target.value),slot:null})); setHoldSecondsLeft(null); }}
                     style={{ width:"100%", padding:"13px 42px 13px 16px", background:"#fff", border:"1.5px solid #BBF7D0", color:"#111827", fontSize:15, fontWeight:700, borderRadius:8, outline:"none", cursor:"pointer", appearance:"none", WebkitAppearance:"none", fontFamily:"'DM Sans',sans-serif", transition:"border-color .2s" }}
                     onFocus={e=>e.target.style.borderColor="#15803D"}
                     onBlur={e=>e.target.style.borderColor="#BBF7D0"}>
@@ -1712,7 +1819,25 @@ function App() {
                   <div style={{ position:"relative" }}>
                     <select
                       value={booking.slot||""}
-                      onChange={e=>setBooking(b=>({...b,slot:e.target.value||null}))}
+                      onChange={e=>{
+                        const newSlot = e.target.value || null;
+                        // Release previous hold if changing slot
+                        if (booking.slot && booking.slot !== newSlot) {
+                          releaseMyHolds(booking.date);
+                        }
+                        setBooking(b=>({...b,slot:newSlot}));
+                        if (newSlot) {
+                          // ✅ Slot select karte hi Firebase mein 10-min hold lagao
+                          const startIdx = ALL_SLOTS.indexOf(newSlot);
+                          const slotsToHold = [];
+                          for (let i = 0; i < (booking.hours||1); i++) {
+                            if (startIdx + i < ALL_SLOTS.length) slotsToHold.push(ALL_SLOTS[startIdx + i]);
+                          }
+                          holdSlots(booking.date, slotsToHold);
+                        } else {
+                          setHoldSecondsLeft(null);
+                        }
+                      }}
                       style={{ width:"100%", padding:"13px 42px 13px 16px", background:booking.slot?"#F0FDF4":"#fff", border:`1.5px solid ${booking.slot?"#15803D":"#BBF7D0"}`, color:booking.slot?"#15803D":"#374151", fontSize:14, fontWeight:700, borderRadius:8, outline:"none", cursor:"pointer", appearance:"none", WebkitAppearance:"none", fontFamily:"'DM Sans',sans-serif", transition:"all .2s" }}
                       onFocus={e=>{ e.target.style.borderColor="#15803D"; e.target.style.boxShadow="0 0 0 3px rgba(21,128,61,0.1)"; }}
                       onBlur={e=>{ e.target.style.borderColor=booking.slot?"#15803D":"#BBF7D0"; e.target.style.boxShadow="none"; }}>
@@ -1746,6 +1871,15 @@ function App() {
                       <div style={{ fontSize:13, color:"#111827", fontWeight:600 }}>
                         {getSelectedSlots()[0]?.split("–")[0].trim()} → {getSelectedSlots()[getSelectedSlots().length-1]?.split("–")[1].trim()}
                       </div>
+                      {/* ✅ HOLD COUNTDOWN */}
+                      {holdSecondsLeft !== null && (
+                        <div style={{ marginTop:5, display:"flex", alignItems:"center", gap:5, padding:"4px 10px", background: holdSecondsLeft < 120 ? "rgba(220,38,38,0.08)" : "rgba(21,128,61,0.08)", border:`1px solid ${holdSecondsLeft < 120 ? "rgba(220,38,38,0.3)" : "rgba(21,128,61,0.25)"}`, borderRadius:20, width:"fit-content" }}>
+                          <span style={{ fontSize:12 }}>🔒</span>
+                          <span style={{ fontSize:11, fontWeight:700, color: holdSecondsLeft < 120 ? "#DC2626" : "#15803D" }}>
+                            Slot held for {Math.floor(holdSecondsLeft/60)}:{String(holdSecondsLeft%60).padStart(2,"0")}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="bb" style={{ fontSize:22, color:"#D97706" }}>
                       ₹{getSlotPrice(booking.slot, booking.date) * booking.hours}
@@ -1755,7 +1889,7 @@ function App() {
               </div>
 
               <div style={{ display:"flex",gap:10 }}>
-                <button className="btn bou" onClick={()=>setStep(1)}>← Back</button>
+                <button className="btn bou" onClick={()=>{ releaseMyHolds(booking.date); setHoldSecondsLeft(null); setBooking(b=>({...b,slot:null})); setStep(1); }}>← Back</button>
                 <button className="btn bg" disabled={!booking.slot} onClick={()=>setStep(3)}>Continue →</button>
               </div>
             </div>
@@ -1937,7 +2071,7 @@ function App() {
                 <a href={CALL} className="btn bcl"><CALL_ICON/> +91 {PHONE}</a>
               </div>
               <div style={{ display:"flex",gap:10,justifyContent:"center",flexWrap:"wrap" }}>
-                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1}); setCouponStatus(null);;setForm({name:"",phone:"",players:"",email:""});setConfirmed(null);}}>Book Another</button>
+                <button className="btn bg" onClick={()=>{setStep(1);setBooking({sport:null,date:getToday(),slot:null,hours:1}); setCouponStatus(null);;setForm({name:"",phone:"",players:"",email:""});setConfirmed(null);setHoldSecondsLeft(null);}}>Book Another</button>
                 <button className="btn bou" onClick={()=>{setPage("home");window.scrollTo(0,0);}}>← Home</button>
               </div>
             </div>
