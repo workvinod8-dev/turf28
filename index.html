@@ -1729,6 +1729,24 @@ function App() {
                 ))}
               </div>
               <button className="btn bg" disabled={!booking.sport} onClick={()=>setStep(2)}>Continue →</button>
+
+              {/* ✅ POLICY NOTES */}
+              <div style={{ marginTop:24, background:"#FFFBEB", border:"1px solid #FDE68A", borderRadius:12, padding:"16px 18px" }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+                  <span style={{ fontSize:16 }}>⚠️</span>
+                  <span style={{ fontFamily:"'Bebas Neue',cursive", fontSize:16, letterSpacing:2, color:"#92400E" }}>IMPORTANT NOTES</span>
+                </div>
+                {[
+                  { icon:"❌", text:"Cancellations are not allowed." },
+                  { icon:"🔄", text:"Rescheduling is allowed only before 6 hours of your booked time." },
+                  { icon:"💬", text:"If you have any questions, feel free to contact us." },
+                ].map(({ icon, text }) => (
+                  <div key={text} style={{ display:"flex", alignItems:"flex-start", gap:8, marginBottom:7 }}>
+                    <span style={{ fontSize:13, marginTop:1 }}>{icon}</span>
+                    <span style={{ fontSize:12, color:"#78350F", lineHeight:1.6 }}>{text}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 
