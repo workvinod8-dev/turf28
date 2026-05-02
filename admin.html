@@ -119,6 +119,18 @@ function getSlotPrice(slot, date) {
   return h < 17 ? (weekend ? 600 : 500) : (weekend ? 800 : 700);
 }
 
+// ✅ FIX: Har slot ka alag price calculate karo — mixed pricing ke liye (e.g. 4PM-6PM = 500+700=1200)
+function calcTotalPrice(slot, date, hours) {
+  const startIdx = ALL_SLOTS.indexOf(slot);
+  if (startIdx === -1) return getSlotPrice(slot, date) * (hours || 1);
+  let total = 0;
+  for (let i = 0; i < (hours || 1); i++) {
+    const s = ALL_SLOTS[startIdx + i];
+    if (s) total += getSlotPrice(s, date);
+  }
+  return total;
+}
+
 const ALL_SLOTS = [];
 for (let h = 5; h < 23; h++) {
   const p1 = h < 12 ? "AM" : "PM";
@@ -143,8 +155,9 @@ const CALL_ICON = () => (
 
 function getTotalAmount(b) {
   if (b.status === "Free (Coupon)") return 0;
-  if (b.hours && b.slot && b.date) return getSlotPrice(b.slot, b.date) * b.hours;
-  return b.amount || 0;
+  if (b.amount) return b.amount;
+  if (b.hours && b.slot && b.date) return calcTotalPrice(b.slot, b.date, b.hours);
+  return 0;
 }
 
 function getDuration(b) {
@@ -164,8 +177,10 @@ function getStartTime(b) { return b.slot?.split("–")[0]?.trim() || b.slot || "
 
 function getTotalRevenueDisplay(list) {
   return list.reduce((sum, b) => {
-    if (b.hours && b.slot && b.date) return sum + getSlotPrice(b.slot, b.date) * b.hours;
-    return sum + (Number(b.amount) || 0);
+    if (b.status === "Free (Coupon)") return sum;
+    if (b.amount) return sum + Number(b.amount);
+    if (b.hours && b.slot && b.date) return sum + calcTotalPrice(b.slot, b.date, b.hours);
+    return sum;
   }, 0);
 }
 
