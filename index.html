@@ -211,6 +211,18 @@ function getSlotPrice(slot, date) {
   return h < 17 ? (weekend ? 600 : 500) : (weekend ? 800 : 700);
 }
 
+// ✅ FIX: Har slot ka alag price calculate karo — mixed pricing ke liye (e.g. 4PM-6PM on weekend = 600+800=1400)
+function calcTotalPrice(slot, date, hours) {
+  const startIdx = ALL_SLOTS.indexOf(slot);
+  if (startIdx === -1) return getSlotPrice(slot, date) * (hours || 1);
+  let total = 0;
+  for (let i = 0; i < (hours || 1); i++) {
+    const s = ALL_SLOTS[startIdx + i];
+    if (s) total += getSlotPrice(s, date);
+  }
+  return total;
+}
+
 // Always compute fresh — never stale even if page is open overnight
 function getToday() { return formatDate(new Date()); }
 function getMaxDate() { return formatDate(new Date(Date.now() + 30*86400000)); }
@@ -359,8 +371,9 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
 
   const getTotalAmount = (b) => {
     if (b.status === "Free (Coupon)") return 0;
-    if (b.hours && b.slot && b.date) return getSlotPrice(b.slot, b.date) * b.hours;
-    return b.amount || 0;
+    if (b.amount) return b.amount; // Firebase mein save hua actual amount use karo
+    if (b.hours && b.slot && b.date) return calcTotalPrice(b.slot, b.date, b.hours);
+    return 0;
   };
 
   const getEndTime = (b) => {
@@ -679,8 +692,10 @@ function AdminSlotPanel({bookedFor, releaseSlot, history, getDayName, getSlotPri
 
 function getTotalRevenueDisplay(list, getSlotPrice) {
   return list.reduce((sum,b)=>{
-    if (b.hours && b.slot && b.date) return sum + getSlotPrice(b.slot,b.date)*b.hours;
-    return sum + (Number(b.amount)||0);
+    if (b.status === "Free (Coupon)") return sum;
+    if (b.amount) return sum + Number(b.amount);
+    if (b.hours && b.slot && b.date) return sum + calcTotalPrice(b.slot,b.date,b.hours);
+    return sum;
   },0);
 }
 
@@ -885,7 +900,7 @@ function App() {
       alert("⚠️ Payment gateway failed to load. Please refresh the page and try again.");
       return;
     }
-    const totalAmt = getSlotPrice(confirmed.slot, confirmed.date) * (confirmed.hours || 1);
+    const totalAmt = calcTotalPrice(confirmed.slot, confirmed.date, confirmed.hours || 1);
     const rzpKey = "rzp_live_SWfwCyi6m2BB3C"; // ← Apna actual Razorpay Key ID yahan daalo
     if (!rzpKey || rzpKey.trim() === "") {
       alert("⚠️ Razorpay Key is missing. Please contact the developer.");
@@ -1237,7 +1252,7 @@ function App() {
     window.location.href = upiURL;
   };
 
-  const slotPrice = booking.sport && booking.slot ? getSlotPrice(booking.slot, booking.date) * (booking.hours||1) : null;
+  const slotPrice = booking.sport && booking.slot ? calcTotalPrice(booking.slot, booking.date, booking.hours||1) : null;
 
   // Get all consecutive slots starting from selected slot for given hours
   const getSelectedSlots = () => {
@@ -1795,7 +1810,7 @@ function App() {
                   <span style={{ position:"absolute", right:14, top:"50%", transform:"translateY(-50%)", pointerEvents:"none", fontSize:14, color:"#6B7280" }}>▾</span>
                 </div>
                 <div style={{ marginTop:7, fontSize:12, color:"#6B7280" }}>
-                  {booking.hours===1 ? "1 hour — single slot" : `${booking.hours} consecutive hours · Total: ₹${booking.slot ? getSlotPrice(booking.slot, booking.date)*booking.hours : "—"}`}
+                  {booking.hours===1 ? "1 hour — single slot" : `${booking.hours} consecutive hours · Total: ₹${booking.slot ? calcTotalPrice(booking.slot, booking.date, booking.hours) : "—"}`}
                 </div>
               </div>
 
@@ -1900,7 +1915,7 @@ function App() {
                       )}
                     </div>
                     <div className="bb" style={{ fontSize:22, color:"#D97706" }}>
-                      ₹{getSlotPrice(booking.slot, booking.date) * booking.hours}
+                      ₹{calcTotalPrice(booking.slot, booking.date, booking.hours)}
                     </div>
                   </div>
                 )}
@@ -2011,7 +2026,7 @@ function App() {
                 <div className="cr" style={{ borderBottom:"none" }}>
                   <span style={{ color:"#6B7280",fontSize:12,fontWeight:600 }}>Total Amount</span>
                   <span className="bb" style={{ color: isCouponValid()?"#7C3AED":"#D97706",fontSize:24 }}>
-                    {isCouponValid() ? "₹0 (FREE 🎟️)" : "₹"+(getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1))}
+                    {isCouponValid() ? "₹0 (FREE 🎟️)" : "₹"+(calcTotalPrice(confirmed.slot,confirmed.date,confirmed.hours||1))}
                   </span>
                 </div>
               </div>
@@ -2041,7 +2056,7 @@ function App() {
                     style={{ width:"100%",padding:"16px",background:"#15803D",color:"#fff",border:"none",borderRadius:8,fontFamily:"'Bebas Neue',cursive",fontSize:22,letterSpacing:2,cursor:"pointer",transition:"all .2s" }}
                     onMouseEnter={e=>e.currentTarget.style.background="#166534"}
                     onMouseLeave={e=>e.currentTarget.style.background="#15803D"}>
-                    💳 PAY ₹{getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1)} & CONFIRM SLOT
+                    💳 PAY ₹{calcTotalPrice(confirmed.slot,confirmed.date,confirmed.hours||1)} & CONFIRM SLOT
                   </button>
                 )}
               </div>
@@ -2070,7 +2085,7 @@ function App() {
                   ["Start Time", confirmed.slot ? confirmed.slot.split("–")[0].trim() : ""],
                   ["End Time", (confirmed.selectedSlots||[confirmed.slot])[((confirmed.selectedSlots||[confirmed.slot]).length)-1]?.split("–")[1]?.trim()||""],
                   ["Duration", (confirmed.hours||1)+" hour(s)"],
-                  ["Total Amount", "₹"+(getSlotPrice(confirmed.slot,confirmed.date)*(confirmed.hours||1))],
+                  ["Total Amount", "₹"+(calcTotalPrice(confirmed.slot,confirmed.date,confirmed.hours||1))],
                   ["Name", confirmed.name],
                   ["Phone", confirmed.phone],
                   ...(confirmed.players?[["Players",confirmed.players]]:[]),
