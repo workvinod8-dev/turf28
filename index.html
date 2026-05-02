@@ -10,7 +10,7 @@
 <script type="module" id="fb-init">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
   import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { ref, set, get, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+  import { ref, set, get, onValue, push, remove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyDYIR5kb031D1PQbCQF9UWoQKQyu4MjEco",
@@ -41,6 +41,9 @@
         set: (val, cb) => set(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
         push: (val, cb) => push(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
         remove: (cb) => remove(dbRef).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
+        transaction: (updateFn, cb) => runTransaction(dbRef, updateFn).then(result => {
+          if(cb) cb(null, result.committed, result.snapshot);
+        }).catch(e => { if(cb) cb(e, false, null); }),
       };
     }
   };
