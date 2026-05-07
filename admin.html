@@ -132,12 +132,12 @@ function calcTotalPrice(slot, date, hours) {
 }
 
 const ALL_SLOTS = [];
-for (let h = 5; h < 23; h++) {
+for (let h = 5; h < 24; h++) {
   const p1 = h < 12 ? "AM" : "PM";
   const d1 = h <= 12 ? h : h - 12;
   const h2 = h + 1;
-  const p2 = h2 <= 12 ? (h2 < 12 ? "AM" : "PM") : "PM";
-  const d2 = h2 <= 12 ? h2 : h2 - 12;
+  const p2 = h2 === 24 ? "AM" : (h2 <= 12 ? (h2 < 12 ? "AM" : "PM") : "PM");
+  const d2 = h2 === 24 ? 12 : (h2 <= 12 ? h2 : h2 - 12);
   ALL_SLOTS.push(`${String(d1).padStart(2,"0")}:00 ${p1} – ${String(d2).padStart(2,"0")}:00 ${p2}`);
 }
 
