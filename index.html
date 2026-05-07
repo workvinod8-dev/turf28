@@ -178,14 +178,14 @@ const CALL = `tel:+91${PHONE}`;
 const SESSION_ID = 'sess_' + Math.random().toString(36).substr(2, 9) + '_' + Date.now();
 const HOLD_DURATION_MS = 5 * 60 * 1000; // 5 minutes hold
 
-// Generate slots 5AM–11PM
+// Generate slots 5AM–12AM
 const ALL_SLOTS = [];
-for (let h = 5; h < 23; h++) {
+for (let h = 5; h < 24; h++) {
   const p1 = h < 12 ? "AM" : "PM";
   const d1 = h <= 12 ? h : h - 12;
   const h2 = h + 1;
-  const p2 = h2 <= 12 ? (h2 < 12 ? "AM" : "PM") : "PM";
-  const d2 = h2 <= 12 ? h2 : h2 - 12;
+  const p2 = h2 === 24 ? "AM" : (h2 <= 12 ? (h2 < 12 ? "AM" : "PM") : "PM");
+  const d2 = h2 === 24 ? 12 : (h2 <= 12 ? h2 : h2 - 12);
   ALL_SLOTS.push(`${String(d1).padStart(2,"0")}:00 ${p1} – ${String(d2).padStart(2,"0")}:00 ${p2}`);
 }
 
@@ -294,7 +294,7 @@ function PricingCard({ sport, icon, isGreen, onBook }) {
             <div style={{ fontSize:10,color:"#9CA3AF" }}>/hr</div>
           </div>
           <div className="pill" style={{ background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)" }}>
-            <div style={{ fontSize:9,color:"#D97706",fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 PM – 11 PM</div>
+            <div style={{ fontSize:9,color:"#D97706",fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 PM – 12 AM</div>
             <div className="bb" style={{ fontSize:34,color:"#D97706",lineHeight:1 }}>₹700</div>
             <div style={{ fontSize:10,color:"#9CA3AF" }}>/hr</div>
           </div>
@@ -310,7 +310,7 @@ function PricingCard({ sport, icon, isGreen, onBook }) {
             <div style={{ fontSize:10,color:"#9CA3AF" }}>/hr</div>
           </div>
           <div className="pill" style={{ background:"rgba(217,119,6,0.06)",border:"1px solid rgba(217,119,6,0.2)" }}>
-            <div style={{ fontSize:9,color:"#D97706",fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 PM – 11 PM</div>
+            <div style={{ fontSize:9,color:"#D97706",fontWeight:700,letterSpacing:1,marginBottom:2 }}>5 PM – 12 AM</div>
             <div className="bb" style={{ fontSize:34,color:"#D97706",lineHeight:1 }}>₹800</div>
             <div style={{ fontSize:10,color:"#9CA3AF" }}>/hr</div>
           </div>
@@ -1381,7 +1381,7 @@ function App() {
                 Cricket & Football on premium artificial grass. Flood-lights nights. Book your slot in seconds.
               </p>
               <div style={{ display:"flex",gap:7,flexWrap:"wrap",marginBottom:28 }}>
-                {["5 AM – 11 PM Daily","Flood Lights","Pay at Venue","Free Parking"].map(f=>(
+                {["5 AM – 12 AM Daily","Flood Lights","Pay at Venue","Free Parking"].map(f=>(
                   <span key={f} style={{ padding:"4px 12px",background:"rgba(21,128,61,0.1)",border:"1px solid rgba(21,128,61,0.3)",borderRadius:20,fontSize:11,color:"#15803D",fontWeight:700 }}>✓ {f}</span>
                 ))}
               </div>
@@ -1467,7 +1467,7 @@ function App() {
         {/* STATS */}
         <section className="stats">
           <div className="stats-in">
-            {[["1","Turf"],["18","Slots/Day"],["5 AM","Opens"],["11 PM","Closes"],["₹500","Starting"]].map(([v,l])=>(
+            {[["1","Turf"],["19","Slots/Day"],["5 AM","Opens"],["12 AM","Closes"],["₹500","Starting"]].map(([v,l])=>(
               <div key={l} style={{ textAlign:"center" }}>
                 <div className="bb" style={{ fontSize:36,color:"#000",lineHeight:1 }}>{v}</div>
                 <div style={{ fontSize:10,color:"#004d1a",fontWeight:700,letterSpacing:2,textTransform:"uppercase" }}>{l}</div>
@@ -1593,7 +1593,7 @@ function App() {
               <div style={{ display:"flex",alignItems:"center",gap:10 }}>
                 <span style={{ fontSize:18 }}>🌙</span>
                 <div>
-                  <div style={{ fontWeight:700,fontSize:13,color:"#D97706" }}>5 PM – 11 PM (Evening)</div>
+                  <div style={{ fontWeight:700,fontSize:13,color:"#D97706" }}>5 PM – 12 AM (Evening)</div>
                   <div style={{ fontSize:12,color:"#6B7280" }}>Mon–Fri ₹700 · Sat–Sun ₹800 per hour</div>
                 </div>
               </div>
@@ -1827,7 +1827,7 @@ function App() {
                 </div>
                 <div style={{ display:"flex",gap:12,marginBottom:8,flexWrap:"wrap" }}>
                   <span style={{ fontSize:11,color:"#15803D",fontWeight:600 }}>☀️ Day (5AM–5PM) ₹{isWeekend(booking.date)?600:500}/hr</span>
-                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening (5PM–11PM) ₹{isWeekend(booking.date)?800:700}/hr</span>
+                  <span style={{ fontSize:11,color:"#D97706",fontWeight:600 }}>🌙 Evening (5PM–12AM) ₹{isWeekend(booking.date)?800:700}/hr</span>
                 </div>
                 {booking.hours > 1 && (
                   <div style={{ marginBottom:10, padding:"8px 12px", background:"rgba(59,130,246,0.06)", border:"1px solid rgba(59,130,246,0.2)", borderRadius:8, fontSize:11, color:"#1D4ED8" }}>
