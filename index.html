@@ -163,14 +163,16 @@ html,body,#root{height:100%;background:#f8fafb;color:#111827;font-family:'DM San
 }
 
 /* GALLERY */
-.gallery-section{padding:72px 20px;background:linear-gradient(180deg,#f0fdf4 0%,#ffffff 100%)}
-.gallery-video-wrap{position:relative;border-radius:18px;overflow:hidden;border:2px solid #BBF7D0;box-shadow:0 8px 40px rgba(21,128,61,0.15);max-width:840px;margin:0 auto;aspect-ratio:16/9;background:#000}
-.gallery-video-wrap video{width:100%;height:100%;object-fit:cover;display:block}
-.gallery-video-overlay{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,0.45) 100%)}
-.gallery-video-label{position:absolute;bottom:18px;left:22px;color:#fff;font-family:'Bebas Neue',cursive;font-size:22px;letter-spacing:2px;text-shadow:0 2px 8px rgba(0,0,0,0.5)}
-.gallery-video-badge{position:absolute;top:16px;right:16px;background:rgba(21,128,61,0.85);color:#fff;font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:2px;padding:5px 14px;border-radius:20px;backdrop-filter:blur(6px)}
+.gallery-section{padding:60px 0 0 0;background:linear-gradient(180deg,#f0fdf4 0%,#111 40%)}
+.gallery-header{padding:0 20px 36px;text-align:center}
+.gallery-video-wrap{position:relative;width:100%;background:#000;overflow:hidden}
+.gallery-video-wrap video{width:100%;height:auto;display:block;max-height:92vh;object-fit:contain}
+.gallery-video-overlay{position:absolute;inset:0;pointer-events:none;background:linear-gradient(180deg,transparent 55%,rgba(0,0,0,0.55) 100%)}
+.gallery-video-label{position:absolute;bottom:22px;left:28px;color:#fff;font-family:'Bebas Neue',cursive;font-size:26px;letter-spacing:3px;text-shadow:0 2px 12px rgba(0,0,0,0.7)}
+.gallery-video-badge{position:absolute;top:20px;right:20px;background:rgba(21,128,61,0.9);color:#fff;font-family:'Bebas Neue',cursive;font-size:13px;letter-spacing:2px;padding:6px 16px;border-radius:20px;backdrop-filter:blur(6px)}
+.gallery-cta{padding:32px 20px 60px;background:#111;text-align:center}
 @keyframes galleryFadeIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-.gallery-section .sec-in{animation:galleryFadeIn .6s ease forwards}
+.gallery-section .gallery-header{animation:galleryFadeIn .6s ease forwards}
 </style>
 </head>
 <body>
@@ -1659,44 +1661,42 @@ function App() {
 
         {/* GALLERY */}
         <section className="gallery-section" id="gallery">
-          <div className="sec-in">
-            <div style={{ textAlign:"center",marginBottom:36 }}>
-              <div className="tag">Gallery</div>
-              <h2 className="bb" style={{ fontSize:"clamp(34px,5vw,52px)",color:"#111827",marginBottom:10 }}>
-                SEE THE <span style={{ color:"#15803D" }}>ACTION</span>
-              </h2>
-              <p style={{ color:"#6B7280",fontSize:14,maxWidth:440,margin:"0 auto" }}>
-                Watch the turf in action — lights on, game on, every day.
-              </p>
-            </div>
+          {/* Header — light bg */}
+          <div className="gallery-header">
+            <div className="tag">Gallery</div>
+            <h2 className="bb" style={{ fontSize:"clamp(34px,5vw,52px)",color:"#111827",marginBottom:10 }}>
+              SEE THE <span style={{ color:"#15803D" }}>ACTION</span>
+            </h2>
+            <p style={{ color:"#6B7280",fontSize:14,maxWidth:440,margin:"0 auto" }}>
+              Watch the turf in action — lights on, game on, every day.
+            </p>
+          </div>
 
-            {/* Main Video */}
-            <div className="gallery-video-wrap">
-              <video
-                autoPlay
-                muted
-                loop
-                playsInline
-                poster=""
-                style={{ width:"100%",height:"100%",objectFit:"cover",display:"block" }}
-              >
-                <source src="turf28_gallery.mp4" type="video/mp4"/>
-                Your browser does not support the video tag.
-              </video>
-              <div className="gallery-video-overlay"/>
-              <div className="gallery-video-label">Turf 28 · Vijayapura</div>
-              <div className="gallery-video-badge">🔴 LIVE TURF</div>
-            </div>
+          {/* Full-width video */}
+          <div className="gallery-video-wrap">
+            <video
+              autoPlay
+              muted
+              loop
+              playsInline
+              style={{ width:"100%",height:"auto",display:"block",maxHeight:"92vh",objectFit:"contain" }}
+            >
+              <source src="turf28_gallery.mp4" type="video/mp4"/>
+              Your browser does not support the video tag.
+            </video>
+            <div className="gallery-video-overlay"/>
+            <div className="gallery-video-label">Turf 28 · Vijayapura</div>
+            <div className="gallery-video-badge">🔴 LIVE TURF</div>
+          </div>
 
-            {/* CTA below video */}
-            <div style={{ textAlign:"center",marginTop:32 }}>
-              <p style={{ color:"#6B7280",fontSize:13,marginBottom:18 }}>
-                Premium floodlit turf — perfect for cricket &amp; football, day or night.
-              </p>
-              <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap" }}>
-                <button className="btn bg" onClick={()=>goBook("cricket")}>🏏 Book Cricket</button>
-                <button className="btn bo" onClick={()=>goBook("football")}>⚽ Book Football</button>
-              </div>
+          {/* CTA — dark bg continues */}
+          <div className="gallery-cta">
+            <p style={{ color:"#9CA3AF",fontSize:13,marginBottom:18 }}>
+              Premium floodlit turf — perfect for cricket &amp; football, day or night.
+            </p>
+            <div style={{ display:"flex",gap:12,justifyContent:"center",flexWrap:"wrap" }}>
+              <button className="btn bg" onClick={()=>goBook("cricket")}>🏏 Book Cricket</button>
+              <button className="btn bo" onClick={()=>goBook("football")}>⚽ Book Football</button>
             </div>
           </div>
         </section>
