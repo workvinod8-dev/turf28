@@ -7,11 +7,16 @@
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script type="module" id="fb-init">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-  import { ref, set, get, onValue, push, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+<script>
+  Babel.registerPreset('custom', {
+    presets: [
+      [Babel.availablePresets['react'], { runtime: 'classic' }]
+    ]
+  });
+</script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
   const firebaseConfig = {
     apiKey: "AIzaSyDYIR5kb031D1PQbCQF9UWoQKQyu4MjEco",
     authDomain: "turf28-a10e1.firebaseapp.com",
@@ -21,28 +26,8 @@
     messagingSenderId: "521710398801",
     appId: "1:521710398801:web:435045df3e2da1925c3770"
   };
-
-  const app = initializeApp(firebaseConfig);
-  const database = getDatabase(app);
-
-  window.db = {
-    ref: (path) => {
-      const dbRef = ref(database, path);
-      return {
-        once: (event, cb) => get(dbRef).then(snap => cb(snap)).catch(e => console.warn(e)),
-        on: (event, cb, errCb) => {
-          const unsub = onValue(dbRef, cb, errCb || (e => console.warn(e)));
-          window._fbUnsubs = window._fbUnsubs || [];
-          window._fbUnsubs.push(unsub);
-          return { off: unsub };
-        },
-        off: () => {},
-        set: (val, cb) => set(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
-        push: (val, cb) => push(dbRef, val).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
-        remove: (cb) => remove(dbRef).then(() => cb && cb(null)).catch(e => { if(cb) cb(e); }),
-      };
-    }
-  };
+  firebase.initializeApp(firebaseConfig);
+  window.db = firebase.database();
   console.log("✅ Firebase initialized!");
 </script>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
@@ -89,7 +74,7 @@ html,body,#root{min-height:100%;background:#f0fdf4;color:#111827;font-family:'DM
 <body>
 <div id="root"></div>
 
-<script type="text/babel">
+<script type="text/babel" data-presets="custom">
 const { useState, useEffect, useRef } = React;
 
 const PHONE = "8552893927";
